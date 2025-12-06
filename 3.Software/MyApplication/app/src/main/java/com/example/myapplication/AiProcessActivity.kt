@@ -39,7 +39,8 @@ class AiProcessActivity : ComponentActivity() {
     private val requestImageRunnable = object : Runnable {
         override fun run() {
             if (isRunning && !isTransferring) {
-                MainActivity.bleManager.requestImage()
+                // 🔧 修复：使用sendCommand而不是requestImage
+                MainActivity.bleManager.sendCommand("takeimage")
             }
             handler.postDelayed(this, 2000)
         }
@@ -72,10 +73,7 @@ class AiProcessActivity : ComponentActivity() {
                     when {
                         msg.contains("image_ready") -> {
                             isTransferring = true
-                            // 自动开始接收
-                            handler.postDelayed({
-                                requestImageData()
-                            }, 500)
+                            // BleManager会自动开始接收，无需手动触发
                         }
                         msg.contains("image_end") || msg.contains("传输完成") -> {
                             isTransferring = false
@@ -91,20 +89,6 @@ class AiProcessActivity : ComponentActivity() {
         handler.post(requestImageRunnable)
     }
 
-    private fun requestImageData() {
-        val runnable = object : Runnable {
-            override fun run() {
-                if (isTransferring && MainActivity.bleManager.isImageReadyForTransfer()) {
-                    MainActivity.bleManager.getImageData()
-                    handler.postDelayed(this, 50) // 更快的请求频率
-                } else {
-                    isTransferring = false
-                }
-            }
-        }
-        handler.post(runnable)
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
@@ -116,11 +100,13 @@ class AiProcessActivity : ComponentActivity() {
 @Composable
 fun AiProcessScreen(onBack: () -> Unit) {
     val logs by MainActivity.bleManager.logs.collectAsState()
-    val imageData by MainActivity.bleManager.imageData.collectAsState()
+    // 🔧 修复：使用receivedImage而不是imageData
+    val imageData by MainActivity.bleManager.receivedImage.collectAsState()
     val progress by MainActivity.bleManager.transferProgress.collectAsState()
 
+    // 🔧 修复：显式指定类型
     val bitmap = remember(imageData) {
-        imageData?.let { data ->
+        imageData?.let { data: ByteArray ->
             BitmapFactory.decodeByteArray(data, 0, data.size)
         }
     }

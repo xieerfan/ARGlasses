@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="NONE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="9dca62a4-5cec-401b-b5e4-99ddbea27499" name="更改" comment="">
+      <change afterPath="$PROJECT_DIR$/.idea/.gitignore" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/.name" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/gradle.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/migrations.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../2.Firmware/ESP32-S3-Test/src/main.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../2.Firmware/ESP32-S3-Test/src/main.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../2.Firmware/ESP32-S3-Test/src/my_sd.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../2.Firmware/ESP32-S3-Test/src/my_sd.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../2.Firmware/ESP32-S3-Test/src/my_sd.h" beforeDir="false" afterPath="$PROJECT_DIR$/../../2.Firmware/ESP32-S3-Test/src/my_sd.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../bledemo/lib/main.dart" beforeDir="false" afterPath="$PROJECT_DIR$/../bledemo/lib/main.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../bledemo/pubspec.lock" beforeDir="false" afterPath="$PROJECT_DIR$/../bledemo/pubspec.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../bledemo/pubspec.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/../bledemo/pubspec.yaml" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ClangdSettings">
+    <option name="formatViaClangd" value="false" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/../.." />
+  </component>
+  <component name="ProjectId" id="36QoG3X3otZ5yeJzeGbXlfVuWxS" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "android.gradle.sync.needed": "true",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "dart.analysis.tool.window.visible": "false",
+    "git-widget-placeholder": "BLEDemo",
+    "settings.editor.selected.configurable": "http.proxy",
+    "show.migrate.to.gradle.popup": "false"
+  }
+}]]></component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="应用程序级" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="默认任务">
+      <changelist id="9dca62a4-5cec-401b-b5e4-99ddbea27499" name="更改" comment="" />
+      <created>1764948056871</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1764948056871</updated>
+    </task>
+    <servers />
+  </component>
+</project>

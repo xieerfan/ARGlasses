@@ -47,6 +47,10 @@ class BleManager(private val context: Context) {
     private val _transferProgress = MutableStateFlow<String>("")
     val transferProgress: StateFlow<String> = _transferProgress
 
+    // 🆕 添加接收命令的StateFlow
+    private val _receivedCommand = MutableStateFlow<String?>(null)
+    val receivedCommand: StateFlow<String?> = _receivedCommand
+
     private var imageBuffer = mutableListOf<Byte>()
     private var expectedImageSize = 0
     private var isReceivingImage = false
@@ -59,7 +63,6 @@ class BleManager(private val context: Context) {
 
     private val handler = Handler(Looper.getMainLooper())
 
-    // 🆕 记录上次收到数据的时间
     private var lastDataReceivedTime = 0L
     private var currentChunkBuffer = mutableListOf<Byte>()
 
@@ -151,9 +154,8 @@ class BleManager(private val context: Context) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     addLog("✅ 已连接，协商MTU...")
                     _connectionState.value = "已连接"
-                    // 🆕 先协商MTU，再发现服务
                     handler.postDelayed({
-                        gatt?.requestMtu(512)  // 请求512字节MTU
+                        gatt?.requestMtu(512)
                     }, 300)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
@@ -172,7 +174,6 @@ class BleManager(private val context: Context) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 addLog("✅ MTU协商成功: $mtu 字节 (可用载荷: ${mtu - 3} 字节)")
                 mtuNegotiated = true
-                // MTU协商完成后，再发现服务
                 handler.postDelayed({
                     gatt?.discoverServices()
                 }, 300)
@@ -270,13 +271,11 @@ class BleManager(private val context: Context) {
                 when (characteristic.uuid) {
                     BleConstants.CHAR_IMAGE_DATA -> {
                         if (expectedImageSize > 0 && imageBuffer.size < expectedImageSize) {
-                            // 🆕 累积数据到chunk buffer
                             currentChunkBuffer.addAll(data.toList())
                             lastDataReceivedTime = System.currentTimeMillis()
 
-                            // 🆕 检查是否收到完整的chunk（400字节）或者超时
                             handler.removeCallbacks(chunkCompleteChecker)
-                            handler.postDelayed(chunkCompleteChecker, 30)  // 30ms超时
+                            handler.postDelayed(chunkCompleteChecker, 30)
                         } else {
 
                         }
@@ -295,8 +294,25 @@ class BleManager(private val context: Context) {
                             "image_end" -> {
                                 addLog("💾 传输完成信号")
                             }
+                            "ai_work" -> {
+                                // 🆕 处理ai_work命令
+                                addLog("🤖 收到AI处理命令")
+                                _receivedCommand.value = "ai_work"
 
-                            else -> {}
+                                // 自动开始读取图片
+                                handler.postDelayed({
+                                    readImageLength()
+                                }, 100)
+                            }
+                            else -> {
+                                // 🆕 处理其他可能的命令
+                                if (message.isNotEmpty()) {
+                                    addLog("📨 收到命令: $message")
+                                    _receivedCommand.value = message
+                                } else {
+
+                                }
+                            }
                         }
                     }
 
@@ -306,10 +322,8 @@ class BleManager(private val context: Context) {
         }
     }
 
-    // 🆕 检查chunk是否接收完成
     private val chunkCompleteChecker = Runnable {
         if (currentChunkBuffer.isNotEmpty()) {
-            // 将chunk添加到总buffer
             imageBuffer.addAll(currentChunkBuffer)
             val chunkSize = currentChunkBuffer.size
             currentChunkBuffer.clear()
@@ -324,7 +338,6 @@ class BleManager(private val context: Context) {
                 isReceivingImage = false
                 _transferProgress.value = ""
             } else {
-                // 继续请求下一块
                 handler.postDelayed({
                     requestImageData()
                 }, 50)
@@ -375,5 +388,10 @@ class BleManager(private val context: Context) {
 
     fun isImageReadyForTransfer(): Boolean {
         return isFullyInitialized && commandCharacteristic != null
+    }
+
+    // 🆕 清除接收到的命令
+    fun clearReceivedCommand() {
+        _receivedCommand.value = null
     }
 }

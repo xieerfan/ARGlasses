@@ -39,7 +39,6 @@ class AiProcessActivity : ComponentActivity() {
     private val requestImageRunnable = object : Runnable {
         override fun run() {
             if (isRunning && !isTransferring) {
-                // 🔧 修复：使用sendCommand而不是requestImage
                 MainActivity.bleManager.sendCommand("takeimage")
             }
             handler.postDelayed(this, 2000)
@@ -71,9 +70,8 @@ class AiProcessActivity : ComponentActivity() {
             MainActivity.bleManager.logs.collect { logs ->
                 logs.lastOrNull()?.let { msg ->
                     when {
-                        msg.contains("image_ready") -> {
+                        msg.contains("image_ready") || msg.contains("ai_work") -> {
                             isTransferring = true
-                            // BleManager会自动开始接收，无需手动触发
                         }
                         msg.contains("image_end") || msg.contains("传输完成") -> {
                             isTransferring = false
@@ -100,14 +98,27 @@ class AiProcessActivity : ComponentActivity() {
 @Composable
 fun AiProcessScreen(onBack: () -> Unit) {
     val logs by MainActivity.bleManager.logs.collectAsState()
-    // 🔧 修复：使用receivedImage而不是imageData
     val imageData by MainActivity.bleManager.receivedImage.collectAsState()
     val progress by MainActivity.bleManager.transferProgress.collectAsState()
+    // 🆕 监听接收到的命令
+    val receivedCommand by MainActivity.bleManager.receivedCommand.collectAsState()
 
-    // 🔧 修复：显式指定类型
     val bitmap = remember(imageData) {
         imageData?.let { data: ByteArray ->
             BitmapFactory.decodeByteArray(data, 0, data.size)
+        }
+    }
+
+    // 🆕 命令显示动画状态
+    var showCommandAnimation by remember { mutableStateOf(false) }
+
+    // 🆕 监听命令变化，触发动画
+    LaunchedEffect(receivedCommand) {
+        if (receivedCommand == "ai_work") {
+            showCommandAnimation = true
+            delay(3000) // 3秒后隐藏
+            showCommandAnimation = false
+            MainActivity.bleManager.clearReceivedCommand()
         }
     }
 
@@ -156,7 +167,6 @@ fun AiProcessScreen(onBack: () -> Unit) {
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 动画图标
                     Box(
                         modifier = Modifier
                             .size(48.dp)
@@ -184,6 +194,77 @@ fun AiProcessScreen(onBack: () -> Unit) {
                             progress.ifEmpty { "等待按钮触发..." },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            }
+
+            // 🆕 命令接收状态卡片（带动画）
+            AnimatedVisibility(
+                visible = showCommandAnimation,
+                enter = slideInVertically() + fadeIn(),
+                exit = slideOutVertically() + fadeOut()
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    Brush.linearGradient(
+                                        colors = listOf(
+                                            MaterialTheme.colorScheme.tertiary,
+                                            MaterialTheme.colorScheme.primary
+                                        )
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.SmartToy,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "接收到处理命令",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            Text(
+                                "ESP32请求AI处理",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
+
+                        Icon(
+                            Icons.Filled.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 }

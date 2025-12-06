@@ -10,9 +10,6 @@
 #include "FreeRTOS.h"
 #include "my_ota.h"
 #include "my_txt.h"
-
-
-
 OneButton button(0, true);
 TaskHandle_t my_mp3_task_handle;
 
@@ -24,6 +21,7 @@ void button_pressed(){
   Serial.println("Button pressed");
   // get_image();
   // save_jpg_file(my_image.buf, my_image.len);
+
   get_image_forsdcard();
 }
 void button_double_pressed(){
@@ -56,6 +54,7 @@ void setup(void){
   my_uart_init();
 
   // print_axp2101_status();
+
   // my_camera_init();
   // play_mp3("/mp3/ltx.mp3");
   // mp3_update();

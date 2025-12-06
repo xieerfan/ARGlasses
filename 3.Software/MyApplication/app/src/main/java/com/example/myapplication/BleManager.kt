@@ -5,6 +5,8 @@ import android.bluetooth.*
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,7 +15,6 @@ import java.util.*
 class BleManager(private val context: Context) {
     private val TAG = "BleManager"
 
-    // 🆕 数据类定义 - MainActivity需要的
     data class BleDevice(
         val name: String,
         val address: String
@@ -28,7 +29,6 @@ class BleManager(private val context: Context) {
     private var notificationCharacteristic: BluetoothGattCharacteristic? = null
     private var statusNotificationCharacteristic: BluetoothGattCharacteristic? = null
 
-    // 🆕 MainActivity期望的StateFlow名称
     private val _devices = MutableStateFlow<List<BleDevice>>(emptyList())
     val devices: StateFlow<List<BleDevice>> = _devices
 
@@ -51,12 +51,12 @@ class BleManager(private val context: Context) {
     private var expectedImageSize = 0
     private var isReceivingImage = false
 
-    // 🆕 连接稳定性标志
     private var isFullyInitialized = false
     private var notificationsEnabled = false
 
-    // 🆕 保存设备地址映射
     private val deviceMap = mutableMapOf<String, android.bluetooth.BluetoothDevice>()
+
+    private val handler = Handler(Looper.getMainLooper())
 
     private fun addLog(message: String) {
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault())
@@ -104,7 +104,6 @@ class BleManager(private val context: Context) {
         }
     }
 
-    // 🆕 支持通过地址连接 - MainActivity需要的
     @SuppressLint("MissingPermission")
     fun connect(address: String) {
         val device = deviceMap[address]
@@ -145,9 +144,9 @@ class BleManager(private val context: Context) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     addLog("✅ 已连接，正在发现服务...")
                     _connectionState.value = "已连接"
-                    // 🆕 延迟一下再发现服务，提高稳定性
-                    Thread.sleep(500)
-                    gatt?.discoverServices()
+                    handler.postDelayed({
+                        gatt?.discoverServices()
+                    }, 500)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     addLog("❌ 连接断开")
@@ -164,17 +163,14 @@ class BleManager(private val context: Context) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 addLog("🔍 发现服务，正在初始化...")
 
-                // Service 2: Image transfer
                 val service2 = gatt?.getService(BleConstants.SERVICE_2)
                 imageCharacteristic = service2?.getCharacteristic(BleConstants.CHAR_IMAGE_LEN)
                 commandCharacteristic = service2?.getCharacteristic(BleConstants.CHAR_IMAGE_CMD)
                 notificationCharacteristic = service2?.getCharacteristic(BleConstants.CHAR_IMAGE_DATA)
 
-                // Service 3: Status notifications
                 val service3 = gatt?.getService(BleConstants.SERVICE_3)
                 statusNotificationCharacteristic = service3?.getCharacteristic(BleConstants.CHAR_DATA_NOTIFY)
 
-                // 🆕 启用通知 - 先启用数据通知
                 if (notificationCharacteristic != null) {
                     gatt?.setCharacteristicNotification(notificationCharacteristic, true)
                     val descriptor = notificationCharacteristic?.getDescriptor(BleConstants.CCCD_UUID)
@@ -196,7 +192,6 @@ class BleManager(private val context: Context) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 addLog("✅ 描述符写入成功")
 
-                // 🆕 如果数据通知启用成功，接着启用状态通知
                 if (!notificationsEnabled && statusNotificationCharacteristic != null) {
                     gatt?.setCharacteristicNotification(statusNotificationCharacteristic, true)
                     val descriptor = statusNotificationCharacteristic?.getDescriptor(BleConstants.CCCD_UUID)
@@ -205,9 +200,8 @@ class BleManager(private val context: Context) {
                     addLog("🔔 启用状态通知 (0303)")
                     notificationsEnabled = true
                 } else {
-                    // 所有通知都已启用
                     isFullyInitialized = true
-                    _isConnected.value = true  // 🆕 设置连接状态
+                    _isConnected.value = true
                     addLog("🎉 初始化完成，可以开始传输")
                 }
             } else {
@@ -230,9 +224,9 @@ class BleManager(private val context: Context) {
                         imageBuffer.clear()
                         isReceivingImage = true
 
-                        // 🆕 延迟一下再开始请求数据，确保ESP32准备好
-                        Thread.sleep(100)
-                        requestImageData()
+                        handler.postDelayed({
+                            requestImageData()
+                        }, 100)
                     }
                 }
             }
@@ -246,42 +240,51 @@ class BleManager(private val context: Context) {
             characteristic?.value?.let { data ->
                 when (characteristic.uuid) {
                     BleConstants.CHAR_IMAGE_DATA -> {
-                        // 图片数据
-                        if (isReceivingImage) {
+                        // 🔧 修复：不检查 isReceivingImage，直接根据数据大小判断
+                        if (expectedImageSize > 0 && imageBuffer.size < expectedImageSize) {
                             imageBuffer.addAll(data.toList())
                             val progress = (imageBuffer.size * 100 / expectedImageSize)
                             _transferProgress.value = "接收中 $progress% (${imageBuffer.size}/$expectedImageSize)"
+                            addLog("接收中 $progress% (${imageBuffer.size}/$expectedImageSize)")
 
                             if (imageBuffer.size >= expectedImageSize) {
                                 addLog("✅ 图片接收完成")
                                 _receivedImage.value = imageBuffer.toByteArray()
                                 isReceivingImage = false
                                 _transferProgress.value = ""
+                                // 🔧 不再继续请求数据
                             } else {
-                                // 🆕 继续快速请求下一块数据
-                                Thread.sleep(50)
-                                requestImageData()
+                                // 继续请求下一块
+                                handler.postDelayed({
+                                    requestImageData()
+                                }, 50)
                             }
+                        } else {
+
                         }
                     }
                     BleConstants.CHAR_DATA_NOTIFY -> {
-                        // 🆕 状态通知 - 关键修复！
                         val message = String(data, Charsets.UTF_8)
                         addLog("📢 收到通知: $message")
 
                         when (message) {
                             "image_ready" -> {
                                 addLog("🎉 图片已准备就绪，开始读取...")
-                                // 🆕 立即读取图片长度
-                                Thread.sleep(50)
-                                readImageLength()
+                                handler.postDelayed({
+                                    readImageLength()
+                                }, 50)
                             }
                             "image_end" -> {
                                 addLog("💾 传输完成信号")
-                                isReceivingImage = false
+                                // 🔧 修复：不要在这里设置 isReceivingImage = false
+                                // 让图片数据处理逻辑自己判断完成
                             }
+
+                            else -> {}
                         }
                     }
+
+                    else -> {}
                 }
             }
         }

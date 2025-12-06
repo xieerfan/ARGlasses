@@ -53,10 +53,15 @@ class BleManager(private val context: Context) {
 
     private var isFullyInitialized = false
     private var notificationsEnabled = false
+    private var mtuNegotiated = false
 
     private val deviceMap = mutableMapOf<String, android.bluetooth.BluetoothDevice>()
 
     private val handler = Handler(Looper.getMainLooper())
+
+    // 🆕 记录上次收到数据的时间
+    private var lastDataReceivedTime = 0L
+    private var currentChunkBuffer = mutableListOf<Byte>()
 
     private fun addLog(message: String) {
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault())
@@ -121,6 +126,7 @@ class BleManager(private val context: Context) {
         _isConnected.value = false
         isFullyInitialized = false
         notificationsEnabled = false
+        mtuNegotiated = false
 
         bluetoothGatt = device.connectGatt(context, false, gattCallback)
     }
@@ -135,6 +141,7 @@ class BleManager(private val context: Context) {
         _isConnected.value = false
         isFullyInitialized = false
         notificationsEnabled = false
+        mtuNegotiated = false
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
@@ -142,11 +149,12 @@ class BleManager(private val context: Context) {
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    addLog("✅ 已连接，正在发现服务...")
+                    addLog("✅ 已连接，协商MTU...")
                     _connectionState.value = "已连接"
+                    // 🆕 先协商MTU，再发现服务
                     handler.postDelayed({
-                        gatt?.discoverServices()
-                    }, 500)
+                        gatt?.requestMtu(512)  // 请求512字节MTU
+                    }, 300)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     addLog("❌ 连接断开")
@@ -154,7 +162,26 @@ class BleManager(private val context: Context) {
                     _isConnected.value = false
                     isFullyInitialized = false
                     notificationsEnabled = false
+                    mtuNegotiated = false
                 }
+            }
+        }
+
+        @SuppressLint("MissingPermission")
+        override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                addLog("✅ MTU协商成功: $mtu 字节 (可用载荷: ${mtu - 3} 字节)")
+                mtuNegotiated = true
+                // MTU协商完成后，再发现服务
+                handler.postDelayed({
+                    gatt?.discoverServices()
+                }, 300)
+            } else {
+                addLog("⚠️ MTU协商失败，使用默认MTU 23字节")
+                mtuNegotiated = true
+                handler.postDelayed({
+                    gatt?.discoverServices()
+                }, 300)
             }
         }
 
@@ -222,7 +249,9 @@ class BleManager(private val context: Context) {
                         _transferProgress.value = "准备接收 $expectedImageSize 字节"
 
                         imageBuffer.clear()
+                        currentChunkBuffer.clear()
                         isReceivingImage = true
+                        lastDataReceivedTime = System.currentTimeMillis()
 
                         handler.postDelayed({
                             requestImageData()
@@ -240,25 +269,14 @@ class BleManager(private val context: Context) {
             characteristic?.value?.let { data ->
                 when (characteristic.uuid) {
                     BleConstants.CHAR_IMAGE_DATA -> {
-                        // 🔧 修复：不检查 isReceivingImage，直接根据数据大小判断
                         if (expectedImageSize > 0 && imageBuffer.size < expectedImageSize) {
-                            imageBuffer.addAll(data.toList())
-                            val progress = (imageBuffer.size * 100 / expectedImageSize)
-                            _transferProgress.value = "接收中 $progress% (${imageBuffer.size}/$expectedImageSize)"
-                            addLog("接收中 $progress% (${imageBuffer.size}/$expectedImageSize)")
+                            // 🆕 累积数据到chunk buffer
+                            currentChunkBuffer.addAll(data.toList())
+                            lastDataReceivedTime = System.currentTimeMillis()
 
-                            if (imageBuffer.size >= expectedImageSize) {
-                                addLog("✅ 图片接收完成")
-                                _receivedImage.value = imageBuffer.toByteArray()
-                                isReceivingImage = false
-                                _transferProgress.value = ""
-                                // 🔧 不再继续请求数据
-                            } else {
-                                // 继续请求下一块
-                                handler.postDelayed({
-                                    requestImageData()
-                                }, 50)
-                            }
+                            // 🆕 检查是否收到完整的chunk（400字节）或者超时
+                            handler.removeCallbacks(chunkCompleteChecker)
+                            handler.postDelayed(chunkCompleteChecker, 30)  // 30ms超时
                         } else {
 
                         }
@@ -276,8 +294,6 @@ class BleManager(private val context: Context) {
                             }
                             "image_end" -> {
                                 addLog("💾 传输完成信号")
-                                // 🔧 修复：不要在这里设置 isReceivingImage = false
-                                // 让图片数据处理逻辑自己判断完成
                             }
 
                             else -> {}
@@ -286,6 +302,32 @@ class BleManager(private val context: Context) {
 
                     else -> {}
                 }
+            }
+        }
+    }
+
+    // 🆕 检查chunk是否接收完成
+    private val chunkCompleteChecker = Runnable {
+        if (currentChunkBuffer.isNotEmpty()) {
+            // 将chunk添加到总buffer
+            imageBuffer.addAll(currentChunkBuffer)
+            val chunkSize = currentChunkBuffer.size
+            currentChunkBuffer.clear()
+
+            val progress = (imageBuffer.size * 100 / expectedImageSize)
+            _transferProgress.value = "接收中 $progress% (${imageBuffer.size}/$expectedImageSize)"
+            addLog("接收块完成: $chunkSize 字节, 总进度 $progress% (${imageBuffer.size}/$expectedImageSize)")
+
+            if (imageBuffer.size >= expectedImageSize) {
+                addLog("✅ 图片接收完成")
+                _receivedImage.value = imageBuffer.toByteArray()
+                isReceivingImage = false
+                _transferProgress.value = ""
+            } else {
+                // 继续请求下一块
+                handler.postDelayed({
+                    requestImageData()
+                }, 50)
             }
         }
     }

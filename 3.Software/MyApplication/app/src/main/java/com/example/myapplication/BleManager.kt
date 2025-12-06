@@ -32,8 +32,9 @@ class BleManager(private val context: Context) {
     private val _devices = MutableStateFlow<List<BleDevice>>(emptyList())
     val devices: StateFlow<List<BleDevice>> = _devices
 
+    // 🔧 修复：改为 MutableStateFlow，这样可以重新赋值
     private val _logs = MutableStateFlow<List<String>>(emptyList())
-    val logs: StateFlow<List<String>> = _logs
+    val logs: MutableStateFlow<List<String>> = _logs
 
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected
@@ -47,9 +48,12 @@ class BleManager(private val context: Context) {
     private val _transferProgress = MutableStateFlow<String>("")
     val transferProgress: StateFlow<String> = _transferProgress
 
-    // 🆕 添加接收命令的StateFlow
     private val _receivedCommand = MutableStateFlow<String?>(null)
     val receivedCommand: StateFlow<String?> = _receivedCommand
+
+    // 设备信息StateFlow
+    private val _deviceInfo = MutableStateFlow(DeviceInfo())
+    val deviceInfo: StateFlow<DeviceInfo> = _deviceInfo
 
     private var imageBuffer = mutableListOf<Byte>()
     private var expectedImageSize = 0
@@ -58,6 +62,7 @@ class BleManager(private val context: Context) {
     private var isFullyInitialized = false
     private var notificationsEnabled = false
     private var mtuNegotiated = false
+    private var currentMtuSize = 23
 
     private val deviceMap = mutableMapOf<String, android.bluetooth.BluetoothDevice>()
 
@@ -130,6 +135,13 @@ class BleManager(private val context: Context) {
         isFullyInitialized = false
         notificationsEnabled = false
         mtuNegotiated = false
+        currentMtuSize = 23
+
+        _deviceInfo.value = DeviceInfo(
+            connectionState = "连接中...",
+            deviceName = device.name ?: "未知",
+            deviceAddress = device.address
+        )
 
         bluetoothGatt = device.connectGatt(context, false, gattCallback)
     }
@@ -145,6 +157,54 @@ class BleManager(private val context: Context) {
         isFullyInitialized = false
         notificationsEnabled = false
         mtuNegotiated = false
+
+        _deviceInfo.value = DeviceInfo()
+    }
+
+    @SuppressLint("MissingPermission")
+    fun refreshDeviceInfo() {
+        val gatt = bluetoothGatt ?: return
+
+        val services = gatt.services ?: emptyList()
+        var totalCharacteristics = 0
+        var totalDescriptors = 0
+        val characteristics = mutableListOf<CharacteristicInfo>()
+        val cccdStates = mutableMapOf<String, Boolean>()
+
+        services.forEach { service ->
+            service.characteristics?.forEach { char ->
+                totalCharacteristics++
+                totalDescriptors += char.descriptors?.size ?: 0
+
+                val properties = mutableListOf<String>()
+                if (char.properties and BluetoothGattCharacteristic.PROPERTY_READ != 0) properties.add("READ")
+                if (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0) properties.add("WRITE")
+                if (char.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0) properties.add("NOTIFY")
+                if (char.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0) properties.add("INDICATE")
+
+                characteristics.add(
+                    CharacteristicInfo(
+                        uuid = char.uuid.toString(),
+                        properties = properties
+                    )
+                )
+
+                if (char.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0 ||
+                    char.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0) {
+                    val descriptor = char.getDescriptor(BleConstants.CCCD_UUID)
+                    val enabled = descriptor?.value?.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == true
+                    cccdStates[char.uuid.toString()] = enabled
+                }
+            }
+        }
+
+        _deviceInfo.value = _deviceInfo.value.copy(
+            serviceCount = services.size,
+            characteristicCount = totalCharacteristics,
+            descriptorCount = totalDescriptors,
+            characteristics = characteristics,
+            cccdStates = cccdStates
+        )
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
@@ -154,6 +214,8 @@ class BleManager(private val context: Context) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     addLog("✅ 已连接，协商MTU...")
                     _connectionState.value = "已连接"
+                    _deviceInfo.value = _deviceInfo.value.copy(connectionState = "已连接")
+
                     handler.postDelayed({
                         gatt?.requestMtu(512)
                     }, 300)
@@ -162,6 +224,7 @@ class BleManager(private val context: Context) {
                     addLog("❌ 连接断开")
                     _connectionState.value = "未连接"
                     _isConnected.value = false
+                    _deviceInfo.value = _deviceInfo.value.copy(connectionState = "未连接")
                     isFullyInitialized = false
                     notificationsEnabled = false
                     mtuNegotiated = false
@@ -172,13 +235,17 @@ class BleManager(private val context: Context) {
         @SuppressLint("MissingPermission")
         override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
+                currentMtuSize = mtu
                 addLog("✅ MTU协商成功: $mtu 字节 (可用载荷: ${mtu - 3} 字节)")
+                _deviceInfo.value = _deviceInfo.value.copy(mtuSize = mtu)
                 mtuNegotiated = true
                 handler.postDelayed({
                     gatt?.discoverServices()
                 }, 300)
             } else {
                 addLog("⚠️ MTU协商失败，使用默认MTU 23字节")
+                currentMtuSize = 23
+                _deviceInfo.value = _deviceInfo.value.copy(mtuSize = 23)
                 mtuNegotiated = true
                 handler.postDelayed({
                     gatt?.discoverServices()
@@ -208,6 +275,8 @@ class BleManager(private val context: Context) {
                 } else {
                     addLog("⚠️ 图片数据通知特征不可用")
                 }
+
+                refreshDeviceInfo()
             }
         }
 
@@ -231,6 +300,7 @@ class BleManager(private val context: Context) {
                     isFullyInitialized = true
                     _isConnected.value = true
                     addLog("🎉 初始化完成，可以开始传输")
+                    refreshDeviceInfo()
                 }
             } else {
                 addLog("⚠️ 描述符写入失败: $status")
@@ -295,17 +365,14 @@ class BleManager(private val context: Context) {
                                 addLog("💾 传输完成信号")
                             }
                             "ai_work" -> {
-                                // 🆕 处理ai_work命令
                                 addLog("🤖 收到AI处理命令")
                                 _receivedCommand.value = "ai_work"
 
-                                // 自动开始读取图片
                                 handler.postDelayed({
                                     readImageLength()
                                 }, 100)
                             }
                             else -> {
-                                // 🆕 处理其他可能的命令
                                 if (message.isNotEmpty()) {
                                     addLog("📨 收到命令: $message")
                                     _receivedCommand.value = message
@@ -390,7 +457,6 @@ class BleManager(private val context: Context) {
         return isFullyInitialized && commandCharacteristic != null
     }
 
-    // 🆕 清除接收到的命令
     fun clearReceivedCommand() {
         _receivedCommand.value = null
     }

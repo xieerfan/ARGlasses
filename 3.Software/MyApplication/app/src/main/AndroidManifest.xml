@@ -36,6 +36,18 @@
             android:name=".AiProcessActivity"
             android:exported="false"
             android:label="AI处理" />
+
+        <!-- 🆕 日志查看Activity -->
+        <activity
+            android:name=".LogViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MyApplication" />
+
+        <!-- 🆕 设备信息Activity -->
+        <activity
+            android:name=".DeviceInfoActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MyApplication" />
     </application>
 
 </manifest>

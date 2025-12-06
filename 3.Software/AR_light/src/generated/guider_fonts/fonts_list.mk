@@ -1,0 +1,1 @@
+GEN_CSRCS += lv_font_AlibabaPuHuiTi_20.c lv_font_montserratMedium_30.c

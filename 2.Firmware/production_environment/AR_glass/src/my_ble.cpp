@@ -1,7 +1,7 @@
 #include "my_ble.h"
 #include "my_camera.h"
 #include "my_sd.h"
-#include "my_driver.h"
+// #include "my_driver.h"
 #include "my_uart.h"
 #include <BLE2902.h>
 #include "my_txt.h"
@@ -151,7 +151,7 @@ class CharacteristicCallbacks1_2 : public BLECharacteristicCallbacks
     {
       Serial.println("read_battery_percent");
       char nowbattery[10];
-      sprintf(nowbattery,"%d",my_driver_get_battery_percent());
+      // sprintf(nowbattery,"%d",my_driver_get_battery_percent());
       pCharacteristic->setValue(nowbattery);
     }
   };

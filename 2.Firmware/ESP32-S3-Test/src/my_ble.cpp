@@ -34,6 +34,9 @@ namespace BLEServerDemo
       write_data_len = 0;
       image_prepared = true;
       Serial.printf("图片准备完成，大小: %d 字节\n", data_len);
+      
+      // 发送通知告诉Android图片已准备好
+      send_my_data("image_ready");
     }
   }
 
@@ -75,9 +78,9 @@ namespace BLEServerDemo
 
   //-------------------------文件接收----------------------------//
 
-  static uint8_t* json_data = nullptr;   // 最终缓冲区首地址
-  static size_t   json_len  = 0;         // 已用长度
-  static size_t   json_cap  = 0;         // 缓冲区总容量
+  static uint8_t* json_data = nullptr;
+  static size_t   json_len  = 0;
+  static size_t   json_cap  = 0;
 
   class CharacteristicCallbacks1_2 : public BLECharacteristicCallbacks
   {
@@ -105,7 +108,7 @@ namespace BLEServerDemo
   {
     void onRead(BLECharacteristic *pCharacteristic, esp_ble_gatts_cb_param_t *param)
     {
-      Serial.println("read_image_len");
+      Serial.printf("read_image_len: %d\n", data_len);
       pCharacteristic->setValue(data_len);
     }
   };
@@ -115,6 +118,8 @@ namespace BLEServerDemo
     void onWrite(BLECharacteristic *pCharacteristic)
     {
       std::string value = pCharacteristic->getValue();
+      Serial.printf("收到命令: %s\n", value.c_str());
+      
       if (value == "getimage")
       {
         if (my_image.buf != NULL && image_prepared)
@@ -134,16 +139,22 @@ namespace BLEServerDemo
             write_data_len = 0;
             data_len = 0;
             image_prepared = false;
+            delay(50); // 确保数据发送完成
             send_my_data("image_end");
             Serial.println("图片发送完成");
           }
         }
+        else
+        {
+          Serial.println("图片尚未准备");
+        }
       }
       else if (value == "takeimage")
       {
-        // 手机请求准备图片，但我们已经在按钮按下时准备好了
         if (image_prepared) {
           Serial.println("图片已准备就绪");
+          // 立即发送就绪通知
+          send_my_data("image_ready");
         } else {
           Serial.println("图片尚未准备");
         }

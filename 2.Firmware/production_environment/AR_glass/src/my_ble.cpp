@@ -204,6 +204,8 @@ class CharacteristicCallbacks1_2 : public BLECharacteristicCallbacks
       }else if(value=="delete_file"){
         sprintf(nowname,"%s",pCharacteristic1_3->getData());
         delete_file(nowname);
+      }else if(value=="set_power"){
+        setpower(atoi(pCharacteristic1_3->getValue().c_str()));
       }
     }
   };

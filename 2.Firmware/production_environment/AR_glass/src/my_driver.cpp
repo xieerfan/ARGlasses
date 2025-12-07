@@ -104,6 +104,7 @@ void my_driver_init() {
   power.enableLongPressShutdown();
   power.setLongPressPowerOFF();   
   power.clrRegisterBit(0x22, 4);
+  setpower(5);
 
 }
 
@@ -118,3 +119,23 @@ void axp_off(){
 
 
 
+// typedef enum __xpowers_axp2101_chg_curr {
+//     XPOWERS_AXP2101_CHG_CUR_0MA=0,
+//     XPOWERS_AXP2101_CHG_CUR_100MA = 4,
+//     XPOWERS_AXP2101_CHG_CUR_125MA=5,
+//     XPOWERS_AXP2101_CHG_CUR_150MA,
+//     XPOWERS_AXP2101_CHG_CUR_175MA,
+//     XPOWERS_AXP2101_CHG_CUR_200MA,
+//     XPOWERS_AXP2101_CHG_CUR_300MA,
+//     XPOWERS_AXP2101_CHG_CUR_400MA,
+//     XPOWERS_AXP2101_CHG_CUR_500MA,
+//     XPOWERS_AXP2101_CHG_CUR_600MA,
+//     XPOWERS_AXP2101_CHG_CUR_700MA,
+//     XPOWERS_AXP2101_CHG_CUR_800MA,
+//     XPOWERS_AXP2101_CHG_CUR_900MA,
+//     XPOWERS_AXP2101_CHG_CUR_1000MA,
+// } xpowers_axp2101_chg_curr_t;
+void setpower(int num)
+{
+  power.setChargerConstantCurr(num);
+}

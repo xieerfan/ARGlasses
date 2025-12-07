@@ -9,4 +9,5 @@ void my_driver_init();
 void print_axp2101_status();
 int my_driver_get_battery_percent();
 void axp_off();
+void setpower(int num);
 #endif

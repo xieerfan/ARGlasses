@@ -2,12 +2,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- 蓝牙权限 -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- 🆕 文件读取权限 -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
@@ -20,7 +25,9 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication"
-        tools:targetApi="31">
+        tools:targetApi="31"
+        android:requestLegacyExternalStorage="true">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -37,17 +44,27 @@
             android:exported="false"
             android:label="AI处理" />
 
-        <!-- 🆕 日志查看Activity -->
         <activity
             android:name=".LogViewerActivity"
             android:exported="false"
-            android:theme="@style/Theme.MyApplication" />
+            android:label="实时日志" />
 
-        <!-- 🆕 设备信息Activity -->
         <activity
             android:name=".DeviceInfoActivity"
             android:exported="false"
-            android:theme="@style/Theme.MyApplication" />
+            android:label="设备信息" />
+
+        <!-- 🆕 音乐上传Activity -->
+        <activity
+            android:name=".MusicUploadActivity"
+            android:exported="false"
+            android:label="音乐上传" />
+
+        <!-- 🆕 小说上传Activity -->
+        <activity
+            android:name=".NovelUploadActivity"
+            android:exported="false"
+            android:label="小说上传" />
     </application>
 
 </manifest>

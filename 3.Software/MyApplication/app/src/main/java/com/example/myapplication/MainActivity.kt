@@ -439,6 +439,8 @@ fun CompactDeviceItem(device: BleManager.BleDevice, onClick: () -> Unit) {
     }
 }
 
+// 在AppScreen函数中，将单个AI处理卡片改为三个卡片
+
 @Composable
 fun AppScreen() {
     val context = LocalContext.current
@@ -448,15 +450,17 @@ fun AppScreen() {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
             "应用功能",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier.padding(bottom = 4.dp)
         )
 
+        // AI 图片处理
         AppCard(
             title = "AI 图片处理",
             description = "自动接收并处理ESP32发送的图片",
@@ -464,6 +468,28 @@ fun AppScreen() {
             enabled = isConnected,
             onClick = {
                 context.startActivity(Intent(context, AiProcessActivity::class.java))
+            }
+        )
+
+        // 音乐上传
+        AppCard(
+            title = "音乐上传",
+            description = "上传MP3文件到 /sdcard/music 目录",
+            icon = Icons.Filled.MusicNote,
+            enabled = isConnected,
+            onClick = {
+                context.startActivity(Intent(context, MusicUploadActivity::class.java))
+            }
+        )
+
+        // 小说上传
+        AppCard(
+            title = "小说上传",
+            description = "上传TXT文件到 /sdcard/novel 目录",
+            icon = Icons.Filled.MenuBook,
+            enabled = isConnected,
+            onClick = {
+                context.startActivity(Intent(context, NovelUploadActivity::class.java))
             }
         )
     }

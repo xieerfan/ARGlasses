@@ -37,6 +37,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // 初始化配置管理器
+        ConfigManager.initialize(this)
+
         bleManager = BleManager(this)
         requestPermissions()
 
@@ -73,26 +76,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class) // 🔧 添加实验性注解
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
 @Composable
 fun MainScreen() {
     var selectedTab by remember { mutableStateOf(0) }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "AR Glass",
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            )
-        },
         bottomBar = {
             NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -101,21 +90,20 @@ fun MainScreen() {
                     icon = { Icon(Icons.Filled.Settings, "设备", tint = if(selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) },
                     label = { Text("设备") },
                     selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    onClick = { selectedTab = 0 }
                 )
                 NavigationBarItem(
                     icon = { Icon(Icons.Filled.Apps, "应用", tint = if(selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) },
                     label = { Text("应用") },
                     selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    onClick = { selectedTab = 1 }
+                )
+
+                NavigationBarItem(
+                    icon = { Icon(Icons.Filled.House, "用户", tint = if(selectedTab == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) },
+                    label = { Text("用户") },
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 }
                 )
             }
         }
@@ -126,13 +114,193 @@ fun MainScreen() {
                 transitionSpec = {
                     slideInHorizontally { it } + fadeIn() with
                             slideOutHorizontally { -it } + fadeOut()
-                }, label = "tab_animation" // 🔧 添加 label 参数
+                }, label = "tab_animation"
             ) { tab ->
                 when (tab) {
                     0 -> DeviceScreen()
                     1 -> AppScreen()
+                    2 -> UserScreen()
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun UserScreen() {
+    val context = LocalContext.current
+
+    // 获取应用信息
+    val packageInfo = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getPackageInfo(
+                context.packageName,
+                PackageManager.PackageInfoFlags.of(0)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(context.packageName, 0)
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    // 提取版本号
+    val versionName = packageInfo?.versionName ?: "无法获取版本号"
+
+    // 使用 MutableState 对象而不是委托
+    val showServerDialogState = remember { mutableStateOf(false) }
+    val showApiDialogState = remember { mutableStateOf(false) }
+
+    // 获取配置
+    val currentConfig = remember { ConfigManager.getConfig() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(16.dp)
+    ) {
+        // 应用版本信息
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            shape = RoundedCornerShape(12.dp)
+
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // 左边
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.Info,
+                        contentDescription = "应用信息",
+                        modifier = Modifier.size(40.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column {
+                        Text(
+                            "应用版本",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        // 显示当前配置的服务器IP
+                        Text(
+                            "服务器: ${currentConfig.server.ip}:${currentConfig.server.port}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
+
+                // 右边
+                Text(
+                    "v$versionName",  // 使用真实的版本号
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp)) // 手动添加间距
+        // 配置按钮
+        Button(
+            onClick = { showServerDialogState.value = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(
+                Icons.Filled.Settings,
+                contentDescription = "配置",
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            Text("服务端配置")
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        // 新增关于按钮
+        Button(
+            onClick = { showApiDialogState.value = true },  // 触发新的弹窗
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(
+                Icons.Filled.Info,
+                contentDescription = "关于",
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            Text("API配置")
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 新增：读取配置文件按钮
+        Button(
+            onClick = {
+                // 重新从文件读取配置
+                ConfigManager.initialize(context)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(
+                Icons.Filled.Refresh,
+                contentDescription = "读取配置",
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            Text("读取配置文件")
+        }
+
+        // 两个弹窗的条件渲染
+        if (showServerDialogState.value) {
+            ServerConfigDialog(
+                initialConfig = currentConfig.server,
+                onDismiss = { showServerDialogState.value = false },
+                onSave = { serverConfig ->
+                    ConfigManager.updateServerConfig(context, serverConfig)
+                    showServerDialogState.value = false
+                }
+            )
+        }
+
+        if (showApiDialogState.value) {
+            ApiConfigDialog(
+                initialConfig = currentConfig.api,
+                onDismiss = { showApiDialogState.value = false },
+                onSave = { apiConfig ->
+                    ConfigManager.updateApiConfig(context, apiConfig)
+                    showApiDialogState.value = false
+                }
+            )
         }
     }
 }

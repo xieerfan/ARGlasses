@@ -13,7 +13,7 @@ android {
         minSdk = 33
         targetSdk = 34
         versionCode = 1
-        versionName = "3.1.2"
+        versionName = "3.2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -74,6 +74,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+
+    implementation("com.squareup.okhttp3:okhttp:4.11.0")
+    implementation("org.json:json:20230227")
 
     // 测试
     testImplementation("junit:junit:4.13.2")

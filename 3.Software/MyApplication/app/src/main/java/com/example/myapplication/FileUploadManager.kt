@@ -1,3 +1,4 @@
+// FileUploadManager.kt（修正版）
 package com.example.myapplication
 
 import android.os.Handler
@@ -6,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
 import java.io.FileInputStream
+
 
 /**
  * 文件上传管理器 - 修复版，正确处理BLE写入异步回调
@@ -279,7 +281,7 @@ class FileUploadManager(private val bleManager: BleManager) {
      */
     private fun updateProgress() {
         currentFile?.let { file ->
-            val progress = ((totalSent * 100) / file.length()).toInt()
+            val progress = if (file.length() > 0) ((totalSent * 100) / file.length()).toInt() else 0
             _uploadProgress.value = UploadProgress(
                 fileName = file.name,
                 totalSize = file.length(),
@@ -290,7 +292,7 @@ class FileUploadManager(private val bleManager: BleManager) {
     }
 
     /**
-     * 完成上传
+     * 完成上传 - 修改版，增加服务器上传
      */
     private fun completeUpload() {
         isUploading = false
@@ -298,19 +300,135 @@ class FileUploadManager(private val bleManager: BleManager) {
         bleManager.setWriteCallback(null)
 
         currentFile?.let { file ->
-            _uploadProgress.value = UploadProgress(
-                fileName = file.name,
-                totalSize = file.length(),
-                uploadedSize = file.length(),
-                progress = 100,
-                isComplete = true
-            )
-        }
+            val fileSize = file.length()
+            val fileName = file.name
 
-        // 2秒后清空进度
-        handler.postDelayed({
-            _uploadProgress.value = null
-        }, 2000)
+            // 更新本地进度
+            _uploadProgress.value = UploadProgress(
+                fileName = fileName,
+                totalSize = fileSize,
+                uploadedSize = fileSize,
+                progress = 100,
+                isComplete = true,
+                message = "设备上传完成，正在同步到服务器..."
+            )
+
+            // 延迟2秒后开始上传到服务器
+            handler.postDelayed({
+                // 根据文件类型上传到服务器
+                when (fileType) {
+                    FileType.MUSIC -> {
+                        uploadToServer(fileName, fileSize, "music")
+                    }
+                    FileType.NOVEL -> {
+                        uploadToServer(fileName, fileSize, "novel")
+                    }
+                    else -> {
+                        // 其他类型不上传服务器
+                        _uploadProgress.value = UploadProgress(
+                            fileName = fileName,
+                            totalSize = fileSize,
+                            uploadedSize = fileSize,
+                            progress = 100,
+                            isComplete = true,
+                            message = "上传完成"
+                        )
+                        handler.postDelayed({
+                            _uploadProgress.value = null
+                        }, 2000)
+                    }
+                }
+            }, 2000)
+        }
+    }
+
+    /**
+     * 上传到服务器
+     */
+    private fun uploadToServer(fileName: String, fileSize: Long, type: String) {
+        currentFile?.let { file ->
+            _uploadProgress.value = UploadProgress(
+                fileName = fileName,
+                totalSize = fileSize,
+                uploadedSize = fileSize,
+                progress = 100,
+                isComplete = false,
+                message = "正在上传到服务器..."
+            )
+
+            when (type) {
+                "music" -> {
+                    NetworkManager.uploadMusicToServer(fileName, fileSize) { success, message ->
+                        handler.post {
+                            if (success) {
+                                _uploadProgress.value = UploadProgress(
+                                    fileName = fileName,
+                                    totalSize = fileSize,
+                                    uploadedSize = fileSize,
+                                    progress = 100,
+                                    isComplete = true,
+                                    message = "上传完成（已同步到服务器）"
+                                )
+
+                                // 3秒后清空进度
+                                handler.postDelayed({
+                                    _uploadProgress.value = null
+                                }, 3000)
+                            } else {
+                                _uploadProgress.value = UploadProgress(
+                                    fileName = fileName,
+                                    totalSize = fileSize,
+                                    uploadedSize = fileSize,
+                                    progress = 100,
+                                    isComplete = false,
+                                    errorMessage = "设备上传成功，但服务器上传失败: $message"
+                                )
+
+                                // 5秒后清空进度
+                                handler.postDelayed({
+                                    _uploadProgress.value = null
+                                }, 5000)
+                            }
+                        }
+                    }
+                }
+                "novel" -> {
+                    NetworkManager.uploadNovelToServer(fileName, fileSize) { success, message ->
+                        handler.post {
+                            if (success) {
+                                _uploadProgress.value = UploadProgress(
+                                    fileName = fileName,
+                                    totalSize = fileSize,
+                                    uploadedSize = fileSize,
+                                    progress = 100,
+                                    isComplete = true,
+                                    message = "上传完成（已同步到服务器）"
+                                )
+
+                                // 3秒后清空进度
+                                handler.postDelayed({
+                                    _uploadProgress.value = null
+                                }, 3000)
+                            } else {
+                                _uploadProgress.value = UploadProgress(
+                                    fileName = fileName,
+                                    totalSize = fileSize,
+                                    uploadedSize = fileSize,
+                                    progress = 100,
+                                    isComplete = false,
+                                    errorMessage = "设备上传成功，但服务器上传失败: $message"
+                                )
+
+                                // 5秒后清空进度
+                                handler.postDelayed({
+                                    _uploadProgress.value = null
+                                }, 5000)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /**

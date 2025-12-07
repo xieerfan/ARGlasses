@@ -15,7 +15,8 @@ data class UploadProgress(
     val uploadedSize: Long,
     val progress: Int,
     val isComplete: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val message: String? = null  // 确保有这个字段
 )
 
 // 文件类型
@@ -23,3 +24,4 @@ enum class FileType(val extension: String, val targetPath: String) {
     MUSIC("mp3", "/sdcard/music"),
     NOVEL("txt", "/sdcard/novel")
 }
+

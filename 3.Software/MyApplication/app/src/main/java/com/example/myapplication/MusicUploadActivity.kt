@@ -1,9 +1,7 @@
+// MusicUploadActivity.kt（修正版）
 package com.example.myapplication
 
-import android.content.Context
-import android.net.Uri
 import android.os.Bundle
-import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -24,8 +22,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.net.Uri
 import java.io.File
-import java.io.FileOutputStream
 
 class MusicUploadActivity : ComponentActivity() {
 
@@ -63,12 +61,15 @@ fun MusicUploadScreen(
     val isConnected by bleManager.isConnected.collectAsState()
     val uploadProgress by uploadManager.uploadProgress.collectAsState()
 
+    // 添加网络上传状态监听
+    val networkUploadState by NetworkManager.uploadState.collectAsState()
+
     var selectedFile by remember { mutableStateOf<File?>(null) }
     var uploadedFiles by remember { mutableStateOf<List<UploadFileInfo>>(emptyList()) }
 
     // 监听上传完成
     LaunchedEffect(uploadProgress) {
-        if (uploadProgress?.isComplete == true) {
+        if (uploadProgress?.isComplete == true && uploadProgress?.errorMessage == null) {
             selectedFile?.let { file ->
                 uploadedFiles = uploadedFiles + UploadFileInfo(
                     fileName = file.name,
@@ -80,13 +81,30 @@ fun MusicUploadScreen(
         }
     }
 
+    // 监听网络上传状态
+    LaunchedEffect(networkUploadState) {
+        networkUploadState?.let { state ->
+            when (state) {
+                is NetworkResult.Error -> {
+                    // 网络上传失败，已在 FileUploadManager 中处理
+                }
+                is NetworkResult.Success -> {
+                    // 网络上传成功，已在 FileUploadManager 中处理
+                }
+                is NetworkResult.Loading -> {
+                    // 正在上传到服务器
+                }
+            }
+        }
+    }
+
     // 文件选择器
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            val file = copyUriToFile(context, uri)
-            if (file != null && file.extension.lowercase() == "mp3") {
+            val file = copyUriToFile(context, uri, "mp3")
+            if (file != null) {
                 selectedFile = file
             }
         }
@@ -156,7 +174,7 @@ fun MusicUploadScreen(
 
             // 选择文件按钮
             Button(
-                onClick = { filePickerLauncher.launch("audio/mpeg") },
+                onClick = { filePickerLauncher.launch("audio/*") },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = isConnected && uploadProgress == null,
                 colors = ButtonDefaults.buttonColors(
@@ -252,26 +270,56 @@ fun MusicUploadScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (progress.errorMessage != null)
-                            MaterialTheme.colorScheme.errorContainer
-                        else if (progress.isComplete)
-                            MaterialTheme.colorScheme.primaryContainer
-                        else
-                            MaterialTheme.colorScheme.tertiaryContainer
+                        containerColor = when {
+                            progress.errorMessage != null -> MaterialTheme.colorScheme.errorContainer
+                            progress.isComplete -> MaterialTheme.colorScheme.primaryContainer
+                            else -> MaterialTheme.colorScheme.tertiaryContainer
+                        }
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp)
                     ) {
+                        // 标题
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                when {
+                                    progress.errorMessage != null -> Icons.Filled.Error
+                                    progress.isComplete -> Icons.Filled.CheckCircle
+                                    else -> Icons.Filled.Upload
+                                },
+                                contentDescription = null,
+                                tint = when {
+                                    progress.errorMessage != null -> MaterialTheme.colorScheme.error
+                                    progress.isComplete -> MaterialTheme.colorScheme.primary
+                                    else -> MaterialTheme.colorScheme.tertiary
+                                }
+                            )
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Text(
+                                when {
+                                    progress.errorMessage != null -> "上传失败"
+                                    progress.isComplete && progress.message?.contains("服务器") == true -> "同步完成"
+                                    progress.isComplete -> "上传完成"
+                                    else -> "上传中..."
+                                },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // 文件名
                         Text(
-                            when {
-                                progress.errorMessage != null -> "上传失败"
-                                progress.isComplete -> "上传完成！"
-                                else -> "上传中..."
-                            },
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
+                            progress.fileName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.fillMaxWidth()
                         )
 
                         if (progress.errorMessage != null) {
@@ -281,9 +329,17 @@ fun MusicUploadScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error
                             )
+                        } else if (progress.message != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                progress.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            )
                         } else {
                             Spacer(modifier = Modifier.height(8.dp))
 
+                            // 进度条
                             LinearProgressIndicator(
                                 progress = progress.progress / 100f,
                                 modifier = Modifier
@@ -294,11 +350,52 @@ fun MusicUploadScreen(
 
                             Spacer(modifier = Modifier.height(4.dp))
 
-                            Text(
-                                "${progress.progress}% (${formatFileSize(progress.uploadedSize)}/${formatFileSize(progress.totalSize)})",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
-                            )
+                            // 进度信息
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "${progress.progress}%",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                                )
+
+                                Text(
+                                    "${formatFileSize(progress.uploadedSize)}/${formatFileSize(progress.totalSize)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
+
+                        // 显示网络上传状态
+                        networkUploadState?.let { state ->
+                            when (state) {
+                                is NetworkResult.Loading -> {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(12.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            "正在同步到服务器...",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+                                is NetworkResult.Error -> {
+                                    // 错误已在主进度中显示
+                                }
+                                is NetworkResult.Success -> {
+                                    // 成功已在主进度中显示
+                                }
+                            }
                         }
                     }
                 }
@@ -357,33 +454,5 @@ fun MusicUploadScreen(
                 }
             }
         }
-    }
-}
-
-// 辅助函数：复制URI到文件
-fun copyUriToFile(context: Context, uri: Uri): File? {
-    return try {
-        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-
-        // 获取文件名
-        var fileName = "temp.mp3"
-        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (nameIndex >= 0) {
-                cursor.moveToFirst()
-                fileName = cursor.getString(nameIndex)
-            }
-        }
-
-        // 创建临时文件
-        val tempFile = File(context.cacheDir, fileName)
-        FileOutputStream(tempFile).use { output ->
-            inputStream.copyTo(output)
-        }
-
-        tempFile
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
     }
 }

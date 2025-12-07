@@ -11,8 +11,9 @@ I2SCodecStream                i2s_out_stream(audio_board);             // i2s co
 EncodedAudioStream decoder(&i2s_out_stream, new MP3DecoderHelix()); // Decoding stream
 File audioFile;
 StreamCopy copier(decoder, audioFile);
+
 static bool mp3_is_playing = false;
-static float vol=0.5;
+static float vol=0.8;
 void my_es8311_init(){
   Serial.println("Setup starting...");
   Serial.println("I2C pin ...");
@@ -26,7 +27,7 @@ void my_es8311_init(){
   Serial.println("Board begin ..."); 
   audio_board.begin();
   Serial.println("I2S begin ..."); 
-  auto i2s_config = i2s_out_stream.defaultConfig(TX_MODE);
+  auto i2s_config = i2s_out_stream.defaultConfig(RXTX_MODE);
   // i2s_config.copyFrom(audio_info);  
   i2s_out_stream.setVolume(vol);
   i2s_out_stream.begin(i2s_config); // this should apply I2C and I2S configuration

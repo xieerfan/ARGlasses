@@ -62,7 +62,7 @@ void setup(void){
   button.attachClick(button_pressed);
   button.attachDoubleClick(button_double_pressed);
   // xTaskCreate(my_driver_print, "my_driver_print", 1024*3, NULL, 5, NULL);
-  BLEServerDemo::my_ble_init();
+  // BLEServerDemo::my_ble_init();
 }
 
 void loop() {

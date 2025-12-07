@@ -10,9 +10,6 @@
 #include "FreeRTOS.h"
 #include "my_ota.h"
 #include "my_txt.h"
-
-
-
 OneButton button(0, true);
 TaskHandle_t my_mp3_task_handle;
 
@@ -63,6 +60,7 @@ void setup(void){
   button.attachDoubleClick(button_double_pressed);
   // xTaskCreate(my_driver_print, "my_driver_print", 1024*3, NULL, 5, NULL);
   BLEServerDemo::my_ble_init();
+
 }
 
 void loop() {

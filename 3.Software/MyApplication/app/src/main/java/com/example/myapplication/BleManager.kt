@@ -15,13 +15,12 @@ import java.util.*
 class BleManager(private val context: Context) {
     private val TAG = "BleManager"
 
-    // ==================== 数据类和接口 ====================
 
+    // ==================== 数据类和接口 ====================
     data class BleDevice(
         val name: String,
         val address: String
     )
-
     /**
      * 写入回调接口 - 用于处理异步写入操作
      */
@@ -93,8 +92,6 @@ class BleManager(private val context: Context) {
     private var lastDataReceivedTime = 0L
     private var currentChunkBuffer = mutableListOf<Byte>()
 
-    // ==================== 日志和工具方法 ====================
-
     private fun addLog(message: String) {
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault())
             .format(Date())
@@ -102,8 +99,6 @@ class BleManager(private val context: Context) {
         _logs.value = (_logs.value + newLog).takeLast(100)
         Log.d(TAG, message)
     }
-
-    // ==================== 扫描相关 ====================
 
     @SuppressLint("MissingPermission")
     fun startScan() {
@@ -267,6 +262,7 @@ class BleManager(private val context: Context) {
                     // 清空命令队列
                     commandQueue.clear()
                     isProcessingCommand = false
+
                 }
             }
         }
@@ -376,7 +372,6 @@ class BleManager(private val context: Context) {
                 writeCallback?.onWriteFailure("GATT错误码: $status")
             }
         }
-
         override fun onCharacteristicRead(
             gatt: BluetoothGatt?,
             characteristic: BluetoothGattCharacteristic?,

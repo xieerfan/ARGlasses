@@ -143,3 +143,8 @@ void my_sd_init() {
     Serial.printf("Start seq from %u\n", file_seq);
 }
 
+void delete_file(const char *path){
+    if (SD_MMC.exists(path)){
+        SD_MMC.remove(path);
+    }
+}

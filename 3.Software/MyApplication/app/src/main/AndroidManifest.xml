@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+
     <!-- 蓝牙权限 -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
@@ -10,10 +11,10 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+
     <!-- 🆕 文件读取权限 -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
@@ -27,7 +28,6 @@
         android:theme="@style/Theme.MyApplication"
         tools:targetApi="31"
         android:requestLegacyExternalStorage="true">
-
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -43,7 +43,6 @@
             android:name=".AiProcessActivity"
             android:exported="false"
             android:label="AI处理" />
-
         <activity
             android:name=".LogViewerActivity"
             android:exported="false"

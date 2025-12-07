@@ -17,6 +17,6 @@ void start_write(const char *path);
 void update_write(uint8_t *data, size_t len);
 void end_write();
 void my_sd_init();
-
+void delete_file(const char *path);
 
 #endif

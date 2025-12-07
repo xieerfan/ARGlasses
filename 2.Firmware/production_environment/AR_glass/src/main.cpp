@@ -21,7 +21,6 @@ void button_pressed(){
   Serial.println("Button pressed");
   // get_image();
   // save_jpg_file(my_image.buf, my_image.len);
-
   get_image_forsdcard();
 }
 void button_double_pressed(){
@@ -54,14 +53,14 @@ void setup(void){
   my_uart_init();
 
   // print_axp2101_status();
-
   // my_camera_init();
   // play_mp3("/mp3/ltx.mp3");
   // mp3_update();
   button.attachClick(button_pressed);
   button.attachDoubleClick(button_double_pressed);
   // xTaskCreate(my_driver_print, "my_driver_print", 1024*3, NULL, 5, NULL);
-  // BLEServerDemo::my_ble_init();
+  BLEServerDemo::my_ble_init();
+
 }
 
 void loop() {

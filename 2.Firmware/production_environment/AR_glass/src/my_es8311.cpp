@@ -11,7 +11,6 @@ I2SCodecStream                i2s_out_stream(audio_board);             // i2s co
 EncodedAudioStream decoder(&i2s_out_stream, new MP3DecoderHelix()); // Decoding stream
 File audioFile;
 StreamCopy copier(decoder, audioFile);
-
 static bool mp3_is_playing = false;
 static float vol=0.8;
 void my_es8311_init(){

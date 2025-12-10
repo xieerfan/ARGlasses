@@ -84,6 +84,14 @@ void loop() {
     display_json(BLEServerDemo::nowname,BLEServerDemo::nowpage,&symaxnum);
     if(BLEServerDemo::nowpage>symaxnum){
       BLEServerDemo::nowpage=0;
+      char _name[256];
+      String path = getNextFilePath();   // 先延长生命周期
+      if(path.length() != 0){
+        strncpy(_name, path.c_str(), sizeof(_name)-1);
+        _name[sizeof(_name)-1] = 0;    // 确保 NUL 结尾
+        strcpy(BLEServerDemo::nowname, _name);
+      }// 扫完了
+      
     }
     sprintf(buff,"%d/%d",BLEServerDemo::nowpage+1,symaxnum+1);
     send_bar((BLEServerDemo::nowpage+1)*100/(symaxnum+1));

@@ -3,6 +3,10 @@
 #include <dirent.h>   // 为了 opendir/readdir
 #include "SD_MMC.h"
 #include "my_uart.h"
+
+static File gDir;                // 目录句柄
+static bool gInited = false;     // 句柄是否已打开
+
 int json2txt(const char* path,const char* outpath) {//解析JSON
     char path0[256];
     sprintf(path0, "/sdcard/%s",path);
@@ -249,6 +253,10 @@ void delete_json_file() {
 
 
 void display_json(const char* jsonname,int y,int* symax) { 
+    if(gInited){
+        gDir.close();
+        gInited = false;   
+    }
     char sypath[256];
     char txtpath[256];
     sprintf(sypath, "%s.sy", jsonname);
@@ -319,4 +327,25 @@ int get_total_pages(const char* syfilepath)
     }
     fclose(f);
     return max_page;   // 就是总页数
+}
+
+
+
+/* 每调一次返回下一个路径；扫完返回 "" */
+String getNextFilePath() {
+  if (!gInited) {                // 第一次调用
+    gDir = SD_MMC.open("/json/");
+    gInited = true;
+  }
+
+  File entry = gDir.openNextFile();
+  if (!entry) {                  // 目录遍历完
+    gDir.close();
+    gInited = false;
+    return "";
+  }
+
+  String path = entry.path();    // 直接拿绝对路径
+  entry.close();                 // 只关文件，不关目录
+  return path;
 }

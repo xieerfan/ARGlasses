@@ -17,4 +17,5 @@ void delete_json_file();//删除全部json文件
 void display_json(const char* jsonname,int y,int* symax);
 void display_txt(const char* txtname,int y,int* symax);
 int get_total_pages(const char* syfilepath);
+String getNextFilePath();
 #endif

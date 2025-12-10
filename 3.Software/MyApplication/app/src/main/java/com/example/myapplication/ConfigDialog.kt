@@ -1,286 +1,471 @@
-// ConfigDialog.kt
 package com.example.myapplication
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 
-
-@Composable
-fun ServerConfigDialog(
-    initialConfig: ServerConfig,
-    onDismiss: () -> Unit,
-    onSave: (ServerConfig) -> Unit
-) {
-    // 使用 MutableState 对象
-    val serverIpState = remember { mutableStateOf(initialConfig.ip) }
-    val serverPortState = remember { mutableStateOf(initialConfig.port) }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true
-        )
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 24.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    "服务端配置",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-
-                // IP地址输入
-                OutlinedTextField(
-                    value = serverIpState.value,
-                    onValueChange = { serverIpState.value = it },
-                    label = { Text("服务器IP地址") },
-                    placeholder = { Text("例如：192.168.1.100") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    isError = serverIpState.value.isNotEmpty() && !isValidIp(serverIpState.value)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 端口输入
-                OutlinedTextField(
-                    value = serverPortState.value,
-                    onValueChange = { serverPortState.value = it },
-                    label = { Text("服务器端口") },
-                    placeholder = { Text("例如：8080") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    isError = serverPortState.value.isNotEmpty() && !isValidPort(serverPortState.value)
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // 按钮区域
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    ) {
-                        Text("取消")
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Button(
-                        onClick = {
-                            val newConfig = ServerConfig(
-                                ip = serverIpState.value,
-                                port = serverPortState.value
-                            )
-                            onSave(newConfig)
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        enabled = isValidIp(serverIpState.value) && isValidPort(serverPortState.value)
-                    ) {
-                        Text("保存配置")
-                    }
-                }
-            }
-        }
-    }
-}
-
-// 验证IP地址
-private fun isValidIp(ip: String): Boolean {
-    val pattern = Regex("^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$")
-    return pattern.matches(ip) || ip == "localhost"
-}
-
-// 验证端口
-private fun isValidPort(port: String): Boolean {
-    return try {
-        val portNum = port.toInt()
-        portNum in 1..65535
-    } catch (e: NumberFormatException) {
-        false
-    }
-}
-
+/**
+ * API配置对话框
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ApiConfigDialog(
     initialConfig: ApiConfig,
     onDismiss: () -> Unit,
     onSave: (ApiConfig) -> Unit
 ) {
-    // 使用 MutableState 对象
-    val baiduApiKeyState = remember { mutableStateOf(initialConfig.baiduApiKey) }
-    val baiduSecretKeyState = remember { mutableStateOf(initialConfig.baiduSecretKey) }
-    val youdaoApiKeyState = remember { mutableStateOf(initialConfig.youdaoApiKey) }
-    val youdaoSecretKeyState = remember { mutableStateOf(initialConfig.youdaoSecretKey) }
-    val aiKeyState = remember { mutableStateOf(initialConfig.aiKey) }
+    // 百度API配置
+    var baiduApiKey by remember { mutableStateOf(initialConfig.baiduApiKey) }
+    var baiduSecretKey by remember { mutableStateOf(initialConfig.baiduSecretKey) }
+    var showBaiduApiKey by remember { mutableStateOf(false) }
+    var showBaiduSecretKey by remember { mutableStateOf(false) }
 
-    Dialog(
+    // 有道API配置
+    var youdaoApiKey by remember { mutableStateOf(initialConfig.youdaoApiKey) }
+    var youdaoSecretKey by remember { mutableStateOf(initialConfig.youdaoSecretKey) }
+    var showYoudaoApiKey by remember { mutableStateOf(false) }
+    var showYoudaoSecretKey by remember { mutableStateOf(false) }
+
+    // AI API配置（修复：使用aiKey替代aiApiKey）
+    var aiKey by remember { mutableStateOf(initialConfig.aiKey) }
+    var showAiKey by remember { mutableStateOf(false) }
+
+    AlertDialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true
-        )
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 24.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                Icon(
+                    Icons.Filled.Key,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    "API配置",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 16.dp)
+                    "API 配置",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
                 )
-
-                // 百度API配置区域
-                Text(
-                    "百度API配置",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-
-                OutlinedTextField(
-                    value = baiduApiKeyState.value,
-                    onValueChange = { baiduApiKeyState.value = it },
-                    label = { Text("百度 API Key") },
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 百度API配置卡片
+                Card(
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = baiduSecretKeyState.value,
-                    onValueChange = { baiduSecretKeyState.value = it },
-                    label = { Text("百度 Secret Key") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 有道API配置区域
-                Text(
-                    "有道API配置",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-
-                OutlinedTextField(
-                    value = youdaoApiKeyState.value,
-                    onValueChange = { youdaoApiKeyState.value = it },
-                    label = { Text("有道 API Key") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = youdaoSecretKeyState.value,
-                    onValueChange = { youdaoSecretKeyState.value = it },
-                    label = { Text("有道 Secret Key") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // AI配置区域
-                Text(
-                    "AI配置",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-
-                OutlinedTextField(
-                    value = aiKeyState.value,
-                    onValueChange = { aiKeyState.value = it },
-                    label = { Text("AI Key") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // 按钮区域
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    TextButton(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("取消")
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Button(
-                        onClick = {
-                            val newConfig = ApiConfig(
-                                baiduApiKey = baiduApiKeyState.value,
-                                baiduSecretKey = baiduSecretKeyState.value,
-                                youdaoApiKey = youdaoApiKeyState.value,
-                                youdaoSecretKey = youdaoSecretKeyState.value,
-                                aiKey = aiKeyState.value
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Filled.AutoFixHigh,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
                             )
-                            onSave(newConfig)
-                        },
-                        shape = RoundedCornerShape(12.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "百度图片增强 API",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Text(
+                            "用于图片增强和OCR处理",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+
+                        // 百度API Key
+                        OutlinedTextField(
+                            value = baiduApiKey,
+                            onValueChange = { baiduApiKey = it },
+                            label = { Text("API Key") },
+                            placeholder = { Text("请输入百度API Key") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.VpnKey, "API Key")
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = { showBaiduApiKey = !showBaiduApiKey }) {
+                                    Icon(
+                                        if (showBaiduApiKey) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                        "切换显示"
+                                    )
+                                }
+                            },
+                            visualTransformation = if (showBaiduApiKey)
+                                VisualTransformation.None
+                            else
+                                PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        // 百度Secret Key
+                        OutlinedTextField(
+                            value = baiduSecretKey,
+                            onValueChange = { baiduSecretKey = it },
+                            label = { Text("Secret Key") },
+                            placeholder = { Text("请输入百度Secret Key") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Lock, "Secret Key")
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = { showBaiduSecretKey = !showBaiduSecretKey }) {
+                                    Icon(
+                                        if (showBaiduSecretKey) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                        "切换显示"
+                                    )
+                                }
+                            },
+                            visualTransformation = if (showBaiduSecretKey)
+                                VisualTransformation.None
+                            else
+                                PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                }
+
+                // 有道API配置卡片
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("保存配置")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Filled.CropFree,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "有道图片分割 API",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Text(
+                            "用于图片区域分割和识别",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                        )
+
+                        // 有道API Key
+                        OutlinedTextField(
+                            value = youdaoApiKey,
+                            onValueChange = { youdaoApiKey = it },
+                            label = { Text("应用ID") },
+                            placeholder = { Text("请输入有道应用ID") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.VpnKey, "应用ID")
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = { showYoudaoApiKey = !showYoudaoApiKey }) {
+                                    Icon(
+                                        if (showYoudaoApiKey) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                        "切换显示"
+                                    )
+                                }
+                            },
+                            visualTransformation = if (showYoudaoApiKey)
+                                VisualTransformation.None
+                            else
+                                PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        // 有道Secret Key
+                        OutlinedTextField(
+                            value = youdaoSecretKey,
+                            onValueChange = { youdaoSecretKey = it },
+                            label = { Text("应用密钥") },
+                            placeholder = { Text("请输入有道应用密钥") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Lock, "应用密钥")
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = { showYoudaoSecretKey = !showYoudaoSecretKey }) {
+                                    Icon(
+                                        if (showYoudaoSecretKey) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                        "切换显示"
+                                    )
+                                }
+                            },
+                            visualTransformation = if (showYoudaoSecretKey)
+                                VisualTransformation.None
+                            else
+                                PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                }
+
+                // AI API配置卡片
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Filled.SmartToy,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.tertiary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "AI 分析 API",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Text(
+                            "用于AI图片内容分析和科目判断",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                        )
+
+                        // AI Key（修复：正确引用aiKey）
+                        OutlinedTextField(
+                            value = aiKey,
+                            onValueChange = { aiKey = it },
+                            label = { Text("API Key") },
+                            placeholder = { Text("请输入AI API Key (sk-...)") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.VpnKey, "API Key")
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = { showAiKey = !showAiKey }) {
+                                    Icon(
+                                        if (showAiKey) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                        "切换显示"
+                                    )
+                                }
+                            },
+                            visualTransformation = if (showAiKey)
+                                VisualTransformation.None
+                            else
+                                PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        Text(
+                            "获取方式：访问 https://www.chatanywhere.tech/",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f)
+                        )
                     }
                 }
             }
-        }
-    }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(
+                        ApiConfig(
+                            baiduApiKey = baiduApiKey.trim(),
+                            baiduSecretKey = baiduSecretKey.trim(),
+                            youdaoApiKey = youdaoApiKey.trim(),
+                            youdaoSecretKey = youdaoSecretKey.trim(),
+                            aiKey = aiKey.trim()  // 修复：使用aiKey
+                        )
+                    )
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Icon(
+                    Icons.Filled.Save,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("取消")
+            }
+        },
+        shape = RoundedCornerShape(20.dp)
+    )
+}
+
+/**
+ * 服务器配置对话框
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ServerConfigDialog(
+    initialConfig: ServerConfig,
+    onDismiss: () -> Unit,
+    onSave: (ServerConfig) -> Unit
+) {
+    var ip by remember { mutableStateOf(initialConfig.ip) }
+    var port by remember { mutableStateOf(initialConfig.port) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Storage,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    "服务器配置",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            "后端服务器地址",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        OutlinedTextField(
+                            value = ip,
+                            onValueChange = { ip = it },
+                            label = { Text("IP地址") },
+                            placeholder = { Text("例如: 192.168.1.100") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Computer, "IP")
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = port,
+                            onValueChange = { port = it },
+                            label = { Text("端口") },
+                            placeholder = { Text("例如: 8080") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.SettingsEthernet, "端口")
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(ServerConfig(ip = ip.trim(), port = port.trim()))
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Icon(
+                    Icons.Filled.Save,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("取消")
+            }
+        },
+        shape = RoundedCornerShape(20.dp)
+    )
 }

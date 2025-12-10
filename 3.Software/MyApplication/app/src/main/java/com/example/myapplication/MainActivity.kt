@@ -64,7 +64,8 @@ class MainActivity : ComponentActivity() {
     private fun requestPermissions() {
         val permissions = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.CAMERA  // ✅ 新增：相机权限
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -87,20 +88,20 @@ fun MainScreen() {
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
             ) {
                 NavigationBarItem(
-                    icon = { Icon(Icons.Filled.Settings, "设备", tint = if(selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) },
+                    icon = { Icon(Icons.Default.Settings, "设备", tint = if(selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) },
                     label = { Text("设备") },
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Filled.Apps, "应用", tint = if(selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) },
+                    icon = { Icon(Icons.Default.Apps, "应用", tint = if(selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) },
                     label = { Text("应用") },
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 }
                 )
 
                 NavigationBarItem(
-                    icon = { Icon(Icons.Filled.House, "用户", tint = if(selectedTab == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) },
+                    icon = { Icon(Icons.Default.Home, "用户", tint = if(selectedTab == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) },
                     label = { Text("用户") },
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 }
@@ -184,7 +185,7 @@ fun UserScreen() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Filled.Info,
+                        Icons.Default.Info,
                         contentDescription = "应用信息",
                         modifier = Modifier.size(40.dp),
                         tint = MaterialTheme.colorScheme.primary
@@ -229,7 +230,7 @@ fun UserScreen() {
             shape = RoundedCornerShape(12.dp)
         ) {
             Icon(
-                Icons.Filled.Settings,
+                Icons.Default.Settings,
                 contentDescription = "配置",
                 modifier = Modifier.padding(end = 8.dp)
             )
@@ -249,7 +250,7 @@ fun UserScreen() {
             shape = RoundedCornerShape(12.dp)
         ) {
             Icon(
-                Icons.Filled.Info,
+                Icons.Default.Info,
                 contentDescription = "关于",
                 modifier = Modifier.padding(end = 8.dp)
             )
@@ -273,7 +274,7 @@ fun UserScreen() {
             shape = RoundedCornerShape(12.dp)
         ) {
             Icon(
-                Icons.Filled.Refresh,
+                Icons.Default.Refresh,
                 contentDescription = "读取配置",
                 modifier = Modifier.padding(end = 8.dp)
             )
@@ -335,7 +336,7 @@ fun DeviceScreen() {
             shape = RoundedCornerShape(12.dp)
         ) {
             Icon(
-                if (isScanning) Icons.Filled.Stop else Icons.Filled.Search,
+                if (isScanning) Icons.Default.Stop else Icons.Default.Search,
                 contentDescription = null,
                 modifier = Modifier.padding(end = 8.dp)
             )
@@ -388,7 +389,7 @@ fun DeviceScreen() {
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(
-                            Icons.Filled.BluetoothSearching,
+                            Icons.Default.BluetoothSearching,
                             contentDescription = null,
                             modifier = Modifier.size(48.dp),
                             tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
@@ -447,7 +448,7 @@ fun DeviceScreen() {
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Filled.Terminal,
+                        Icons.Default.Terminal,
                         contentDescription = null,
                         modifier = Modifier.size(24.dp),
                         tint = Color.White
@@ -471,7 +472,7 @@ fun DeviceScreen() {
                 }
 
                 Icon(
-                    Icons.Filled.ChevronRight,
+                    Icons.Default.ChevronRight,
                     contentDescription = null,
                     modifier = Modifier.size(24.dp),
                     tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.5f)
@@ -510,7 +511,7 @@ fun DeviceScreen() {
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Filled.Info,
+                        Icons.Default.Info,
                         contentDescription = null,
                         modifier = Modifier.size(24.dp),
                         tint = Color.White
@@ -534,7 +535,7 @@ fun DeviceScreen() {
                 }
 
                 Icon(
-                    Icons.Filled.ChevronRight,
+                    Icons.Default.ChevronRight,
                     contentDescription = null,
                     modifier = Modifier.size(24.dp),
                     tint = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f)
@@ -571,7 +572,7 @@ fun CompactDeviceItem(device: BleManager.BleDevice, onClick: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Filled.Bluetooth,
+                    Icons.Default.Bluetooth,
                     contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(20.dp)
@@ -598,7 +599,7 @@ fun CompactDeviceItem(device: BleManager.BleDevice, onClick: () -> Unit) {
             }
 
             Icon(
-                Icons.Filled.ChevronRight,
+                Icons.Default.ChevronRight,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.size(24.dp)
@@ -607,8 +608,10 @@ fun CompactDeviceItem(device: BleManager.BleDevice, onClick: () -> Unit) {
     }
 }
 
-// 在AppScreen函数中，将单个AI处理卡片改为三个卡片
-
+/**
+ * 应用功能屏幕
+ * ✅ 修复：移除 isConnected 限制，允许在未连接设备时进入处理界面
+ */
 @Composable
 fun AppScreen() {
     val context = LocalContext.current
@@ -628,34 +631,37 @@ fun AppScreen() {
             modifier = Modifier.padding(bottom = 4.dp)
         )
 
-        // AI 图片处理
+        // ✅ AI 图片处理 - 移除 enabled = isConnected 限制
         AppCard(
             title = "AI 图片处理",
-            description = "自动接收并处理ESP32发送的图片",
-            icon = Icons.Filled.AutoAwesome,
-            enabled = isConnected,
+            description = "拍照或接收图片进行处理分析",
+            icon = Icons.Default.AutoAwesome,
+            enabled = true,  // ✅ 改为 true，始终可用
+            connectionStatus = if (isConnected) "已连接" else "未连接",
             onClick = {
                 context.startActivity(Intent(context, AiProcessActivity::class.java))
             }
         )
 
-        // 音乐上传
+        // 🎵 音乐上传 - 仅在连接时可用
         AppCard(
             title = "音乐上传",
             description = "上传MP3文件到 /sdcard/music 目录",
-            icon = Icons.Filled.MusicNote,
+            icon = Icons.Default.MusicNote,
             enabled = isConnected,
+            connectionStatus = if (isConnected) "已连接" else "需要连接设备",
             onClick = {
                 context.startActivity(Intent(context, MusicUploadActivity::class.java))
             }
         )
 
-        // 小说上传
+        // 📚 小说上传 - 仅在连接时可用
         AppCard(
             title = "小说上传",
             description = "上传TXT文件到 /sdcard/novel 目录",
-            icon = Icons.Filled.MenuBook,
+            icon = Icons.Default.MenuBook,
             enabled = isConnected,
+            connectionStatus = if (isConnected) "已连接" else "需要连接设备",
             onClick = {
                 context.startActivity(Intent(context, NovelUploadActivity::class.java))
             }
@@ -663,12 +669,17 @@ fun AppScreen() {
     }
 }
 
+/**
+ * 应用卡片组件
+ * ✅ 新增：连接状态指示
+ */
 @Composable
 fun AppCard(
     title: String,
     description: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     enabled: Boolean,
+    connectionStatus: String = "",
     onClick: () -> Unit
 ) {
     Card(
@@ -745,10 +756,22 @@ fun AppCard(
                     else
                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
+                // ✅ 新增：显示连接状态
+                if (connectionStatus.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "状态: $connectionStatus",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (enabled)
+                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                }
             }
 
             Icon(
-                Icons.Filled.ChevronRight,
+                Icons.Default.ChevronRight,
                 contentDescription = null,
                 tint = if (enabled)
                     MaterialTheme.colorScheme.onPrimaryContainer

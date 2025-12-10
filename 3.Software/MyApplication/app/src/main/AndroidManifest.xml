@@ -10,14 +10,18 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <!-- 🆕 文件读取权限 -->
+    <!-- 文件读取权限 -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <!-- 🆕 相机权限 -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -58,17 +62,28 @@
             android:exported="false"
             android:label="设备信息" />
 
-        <!-- 🆕 音乐上传Activity -->
+        <!-- 音乐上传Activity -->
         <activity
             android:name=".MusicUploadActivity"
             android:exported="false"
             android:label="音乐上传" />
 
-        <!-- 🆕 小说上传Activity -->
+        <!-- 小说上传Activity -->
         <activity
             android:name=".NovelUploadActivity"
             android:exported="false"
             android:label="小说上传" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 
 </manifest>

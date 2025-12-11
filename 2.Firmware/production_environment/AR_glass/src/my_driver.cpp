@@ -3,8 +3,8 @@
 #include "my_uart.h"
 
 XPowersPMU power;
-#define BSP_I2C_SDA           (GPIO_NUM_1)   // SDA引脚
-#define BSP_I2C_SCL           (GPIO_NUM_2)   // SCL引脚
+#define BSP_I2C_SDA           (GPIO_NUM_18)   // SDA引脚
+#define BSP_I2C_SCL           (GPIO_NUM_17)   // SCL引脚
 
 
 void adcOn() {

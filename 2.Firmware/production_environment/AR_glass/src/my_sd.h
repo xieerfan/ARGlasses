@@ -2,9 +2,9 @@
 #define MY_SD_H
 
 #include "Arduino.h"
-#define BSP_SD_CLK          (GPIO_NUM_5)
-#define BSP_SD_CMD          (GPIO_NUM_4)
-#define BSP_SD_D0           (GPIO_NUM_11)
+#define BSP_SD_CLK          (GPIO_NUM_40)
+#define BSP_SD_CMD          (GPIO_NUM_39)
+#define BSP_SD_D0           (GPIO_NUM_41)
 
 
 // #define BSP_SD_CLK          (GPIO_NUM_47)

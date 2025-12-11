@@ -1,7 +1,7 @@
 #include "my_ble.h"
 #include "my_camera.h"
 #include "my_sd.h"
-// #include "my_driver.h"
+#include "my_driver.h"
 #include "my_uart.h"
 #include <BLE2902.h>
 #include "my_txt.h"
@@ -151,7 +151,7 @@ class CharacteristicCallbacks1_2 : public BLECharacteristicCallbacks
     {
       Serial.println("read_battery_percent");
       char nowbattery[10];
-      // sprintf(nowbattery,"%d",my_driver_get_battery_percent());
+      sprintf(nowbattery,"%d",my_driver_get_battery_percent());
       pCharacteristic->setValue(nowbattery);
     }
   };
@@ -215,6 +215,10 @@ class CharacteristicCallbacks1_2 : public BLECharacteristicCallbacks
     BLEDevice::init("AR_GLASS");
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new ServerCallbacks());
+      // 3. 广播间隔 160 ms（平衡速度与功耗）
+    pServer->getAdvertising()->setMinInterval(0xA0); // 160 ms
+    pServer->getAdvertising()->setMaxInterval(0xA0);
+
 
     pService1 = pServer->createService(BLEUUID("aabb0100-0000-1000-8000-00805f9b34fb"));
     pService2 = pServer->createService(BLEUUID("aabb0200-0000-1000-8000-00805f9b34fb"));

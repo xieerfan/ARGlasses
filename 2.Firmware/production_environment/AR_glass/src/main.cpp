@@ -3,7 +3,7 @@
 #include "my_sd.h"
 #include "my_es8311.h"
 #include "my_txt.h"
-// #include "my_driver.h"
+#include "my_driver.h"
 #include "my_uart.h"
 #include "OneButton.h"
 #include "Wire.h"
@@ -13,16 +13,16 @@
 OneButton button(0, true);
 TaskHandle_t my_mp3_task_handle;
 
-#define BSP_I2C_SDA           (GPIO_NUM_1)   // SDA引脚
-#define BSP_I2C_SCL           (GPIO_NUM_2)   // SCL引脚
+#define BSP_I2C_SDA           (GPIO_NUM_18)   // SDA引脚
+#define BSP_I2C_SCL           (GPIO_NUM_17)   // SCL引脚
 int symaxnum;
 char buff[100];
 void button_pressed(){
   Serial.println("Button pressed");
-  // get_image();
-  // save_jpg_file(my_image.buf, my_image.len);
+  get_image();
+  save_jpg_file(my_image.buf, my_image.len);
 
-  get_image_forsdcard();
+  // get_image_forsdcard();
 }
 void button_double_pressed(){
   Serial.println("Button double pressed");
@@ -44,24 +44,24 @@ void setup(void){
   Serial.begin(115200);
   Wire.begin(BSP_I2C_SDA, BSP_I2C_SCL);
   pinMode(0, INPUT_PULLUP);
-  pinMode(6, OUTPUT);
-  digitalWrite(6, 1);
+  pinMode(45, OUTPUT);
+  digitalWrite(45, 1);
 
 
   my_sd_init();
-  // my_driver_init();
+  my_driver_init();
   my_es8311_init();
   my_uart_init();
 
-  // print_axp2101_status();
+  print_axp2101_status();
 
-  // my_camera_init();
+  my_camera_init();
   // play_mp3("/mp3/ltx.mp3");
-  // mp3_update();
+  // // mp3_update();
   button.attachClick(button_pressed);
   button.attachDoubleClick(button_double_pressed);
-  // xTaskCreate(my_driver_print, "my_driver_print", 1024*3, NULL, 5, NULL);
-  // BLEServerDemo::my_ble_init();
+  xTaskCreate(my_driver_print, "my_driver_print", 1024*3, NULL, 5, NULL);
+  BLEServerDemo::my_ble_init();
 }
 
 void loop() {

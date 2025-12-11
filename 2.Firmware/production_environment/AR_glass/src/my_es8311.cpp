@@ -13,7 +13,7 @@ File audioFile;
 StreamCopy copier(decoder, audioFile);
 
 static bool mp3_is_playing = false;
-static float vol=0.8;
+static float vol=0.5;
 void my_es8311_init(){
   Serial.println("Setup starting...");
   Serial.println("I2C pin ...");

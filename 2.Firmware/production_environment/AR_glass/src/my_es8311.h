@@ -8,11 +8,11 @@
  */
 
 #define I2S_NUM         (0)
-#define I2S_MCK_IO      (GPIO_NUM_7)
-#define I2S_BCK_IO      (GPIO_NUM_9)
-#define I2S_WS_IO       (GPIO_NUM_13)
-#define I2S_DO_IO       (GPIO_NUM_12)
-#define I2S_DI_IO       (GPIO_NUM_8)
+#define I2S_MCK_IO      (GPIO_NUM_46)
+#define I2S_BCK_IO      (GPIO_NUM_1)
+#define I2S_WS_IO       (GPIO_NUM_3)
+#define I2S_DO_IO       (GPIO_NUM_4)
+#define I2S_DI_IO       (GPIO_NUM_2)
 
 void my_es8311_init();
 void play_mp3(const char *path);

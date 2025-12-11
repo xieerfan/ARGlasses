@@ -1,8 +1,8 @@
 #ifndef ___MY_UART_H_
 #define ___MY_UART_H_
 
-#define UART_RX 42
-#define UART_TX 41
+#define UART_RX 47
+#define UART_TX 48
 #include "Arduino.h"
 
 struct My_tcpdata

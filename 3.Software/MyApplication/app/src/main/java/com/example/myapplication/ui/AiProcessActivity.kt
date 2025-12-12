@@ -16,9 +16,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.myapplication.AppTheme
 import com.example.myapplication.CameraHelper
 import com.example.myapplication.config.ConfigManager
-import com.example.myapplication.ImageEnhancer
 import com.example.myapplication.ImageProcessingManager
-import com.example.myapplication.ImageSplitter
 import com.example.myapplication.MainActivity
 import com.example.myapplication.network.AnswerUploadManager
 import com.example.myapplication.network.NetworkManager

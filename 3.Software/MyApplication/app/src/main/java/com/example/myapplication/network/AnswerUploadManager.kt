@@ -4,10 +4,8 @@ package com.example.myapplication.network
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import com.example.myapplication.BleManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import com.example.myapplication.data.FileType
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID

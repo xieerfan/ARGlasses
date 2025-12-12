@@ -331,4 +331,76 @@ object NetworkManager {
     fun clearState() {
         _uploadState.value = null
     }
+
+    /**
+     * ✅ 获取待处理命令（轮询接口）
+     */
+    fun getPendingCommands(
+        clientId: String = "AR_glass_client",
+        onSuccess: (List<Map<String, Any>>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val config = com.example.myapplication.config.ConfigManager.getConfig()
+                val serverIp = config.server.ip
+                val serverPort = config.server.port
+
+                if (serverIp.isEmpty() || serverPort.isEmpty()) {
+                    Log.w(TAG, "⚠️ 服务器配置未设置")
+                    onFailure("服务器配置未设置")
+                    return@launch
+                }
+
+                val url = "http://${serverIp}:${serverPort}/api/command/pending"
+
+                val requestBody = JSONObject().apply {
+                    put("client_id", clientId)
+                }.toString().toRequestBody("application/json".toMediaType())
+
+                val request = Request.Builder()
+                    .url(url)
+                    .post(requestBody)
+                    .build()
+
+                Log.d(TAG, "📡 轮询命令: $url")
+
+                val response = okHttpClient.newCall(request).execute()
+
+                if (response.isSuccessful) {
+                    val body = response.body?.string() ?: ""
+                    val json = JSONObject(body)
+
+                    if (json.optBoolean("success")) {
+                        val data = json.getJSONObject("data")
+                        val commandsArray = data.getJSONArray("commands")
+
+                        val commands = mutableListOf<Map<String, Any>>()
+                        for (i in 0 until commandsArray.length()) {
+                            val cmdObj = commandsArray.getJSONObject(i)
+                            commands.add(mapOf(
+                                "type" to cmdObj.optString("type"),
+                                "file_name" to cmdObj.optString("file_name"),
+                                "timestamp" to cmdObj.optString("timestamp")
+                            ))
+                        }
+
+                        if (commands.isNotEmpty()) {
+                            Log.d(TAG, "✅ 获取到 ${commands.size} 条待处理命令")
+                        }
+                        onSuccess(commands)
+                    } else {
+                        Log.e(TAG, "❌ API返回失败")
+                        onFailure("API返回失败")
+                    }
+                } else {
+                    Log.e(TAG, "❌ HTTP ${response.code}")
+                    onFailure("HTTP ${response.code}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ 获取命令异常: ${e.message}", e)
+                onFailure(e.message ?: "未知错误")
+            }
+        }
+    }
 }

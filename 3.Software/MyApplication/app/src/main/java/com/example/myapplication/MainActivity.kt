@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
@@ -31,6 +32,7 @@ import com.example.myapplication.config.ConfigManager
 import com.example.myapplication.ui.AiProcessActivity
 import com.example.myapplication.ui.ServerConfigDialog
 import com.example.myapplication.ui.ApiConfigDialog
+import com.example.myapplication.CommandPollingService
 
 class MainActivity : ComponentActivity() {
 
@@ -46,6 +48,7 @@ class MainActivity : ComponentActivity() {
 
         bleManager = BleManager(this)
         requestPermissions()
+        startCommandPollingService()
 
         setContent {
             AppTheme {
@@ -57,6 +60,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun startCommandPollingService() {
+        val intent = Intent(this, CommandPollingService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+        Log.d("MainActivity", "✅ 命令轮询服务已启动")
     }
 
     override fun onResume() {
@@ -723,3 +736,6 @@ fun AppCard(
         }
     }
 }
+
+
+

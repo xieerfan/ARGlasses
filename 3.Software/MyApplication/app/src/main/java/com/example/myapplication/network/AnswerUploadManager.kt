@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+import com.example.myapplication.BleManager
 
 /**
  * ✅ 改进的答案上传管理器

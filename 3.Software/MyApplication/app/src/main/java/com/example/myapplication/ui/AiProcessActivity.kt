@@ -34,6 +34,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import com.example.myapplication.BleManager
+import com.example.myapplication.ImageEnhancer
+import com.example.myapplication.ImageSplitter
 
 /**
  * ✅ 修复后的AiProcessActivity

@@ -48,14 +48,9 @@
         </activity>
 
         <activity
-            android:name=".AiProcessActivity"
+            android:name=".ui.AiProcessActivity"
             android:exported="false"
             android:label="AI处理" />
-
-        <activity
-            android:name=".LogViewerActivity"
-            android:exported="false"
-            android:label="实时日志" />
 
         <activity
             android:name=".DeviceInfoActivity"

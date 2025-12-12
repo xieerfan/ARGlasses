@@ -10,7 +10,6 @@
             "includePath": [
                 "d:/project/Personal_projects/ARGlasses/2.Firmware/ESP32-S3-Test/include",
                 "d:/project/Personal_projects/ARGlasses/2.Firmware/ESP32-S3-Test/src",
-                "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/BLE/src",
                 "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/Update/src",
                 "d:/project/Personal_projects/ARGlasses/2.Firmware/ESP32-S3-Test/.pio/libdeps/esp32-s3-devkitm-1/arduino-tools/src",
                 "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/Ticker/src",
@@ -23,6 +22,7 @@
                 "d:/project/Personal_projects/ARGlasses/2.Firmware/ESP32-S3-Test/.pio/libdeps/esp32-s3-devkitm-1/XPowersLib/src",
                 "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/SD_MMC/src",
                 "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/FS/src",
+                "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/BLE/src",
                 "d:/project/Personal_projects/ARGlasses/2.Firmware/ESP32-S3-Test/.pio/libdeps/esp32-s3-devkitm-1/OneButton/src",
                 "d:/project/Personal_projects/ARGlasses/2.Firmware/ESP32-S3-Test/.pio/libdeps/esp32-s3-devkitm-1/PCA9557-arduino/src",
                 "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
@@ -249,7 +249,6 @@
                 "path": [
                     "d:/project/Personal_projects/ARGlasses/2.Firmware/ESP32-S3-Test/include",
                     "d:/project/Personal_projects/ARGlasses/2.Firmware/ESP32-S3-Test/src",
-                    "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/BLE/src",
                     "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/Update/src",
                     "d:/project/Personal_projects/ARGlasses/2.Firmware/ESP32-S3-Test/.pio/libdeps/esp32-s3-devkitm-1/arduino-tools/src",
                     "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/Ticker/src",
@@ -262,6 +261,7 @@
                     "d:/project/Personal_projects/ARGlasses/2.Firmware/ESP32-S3-Test/.pio/libdeps/esp32-s3-devkitm-1/XPowersLib/src",
                     "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/SD_MMC/src",
                     "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/FS/src",
+                    "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/BLE/src",
                     "d:/project/Personal_projects/ARGlasses/2.Firmware/ESP32-S3-Test/.pio/libdeps/esp32-s3-devkitm-1/OneButton/src",
                     "d:/project/Personal_projects/ARGlasses/2.Firmware/ESP32-S3-Test/.pio/libdeps/esp32-s3-devkitm-1/PCA9557-arduino/src",
                     "C:/Users/1/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",

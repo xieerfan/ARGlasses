@@ -186,19 +186,28 @@ object BleCommandSender {
     }
 
     /**
-     * ✅ 设置电源
+     * ✅ 设置充电电流（新增）
+     * @param currentValue 电流值 (4-16，对应100mA-1000mA)
      */
-    fun setPower(value: String): Boolean {
-        Log.d(TAG, "⚡ 设置电源: $value")
+    fun setChargingCurrent(currentValue: Int): Boolean {
+        Log.d(TAG, "⚡ 设置充电电流: $currentValue")  // 移除 mA
         val bleManager = MainActivity.bleManager
+
         if (!bleManager.isConnected.value) {
-            Log.w(TAG, "⚠️ BLE 未连接")
+            Log.w(TAG, "⚠️ BLE 未连接，无法设置充电电流")
             return false
         }
-        sendFileName(value)
-        Thread.sleep(50)
-        bleManager.sendCommand(BLE_CMD_SET_POWER)
-        return true
+
+        try {
+            bleManager.sendFileName(currentValue.toString())
+            Thread.sleep(50)
+            bleManager.sendCommand(BLE_CMD_SET_POWER)
+            Log.d(TAG, "✅ 充电电流设置已发送: $currentValue")  // 移除 mA
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 设置充电电流失败: ${e.message}", e)
+            return false
+        }
     }
 
     /**
@@ -208,18 +217,11 @@ object BleCommandSender {
      */
     private fun sendFileName(fileName: String) {
         try {
-            // ✅ 这里需要通过 BLE 发送文件名
-            // 实现方式：通过 BleManager 的接口发送到特征 1_3
-            //
-            // 示例（需要在 BleManager 中添加此方法）：
-            // bleManager.sendToCharacteristic(fileName, pCharacteristic1_3)
-
             val bleManager = MainActivity.bleManager
-            bleManager.sendCommand(fileName)  // 临时方案，需要改进
-
-            Log.d(TAG, "📝 已发送文件名: $fileName")
+            bleManager.sendFileName(fileName)
+            Log.d(TAG, "📝 已发送: $fileName")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ 发送文件名失败: ${e.message}", e)
+            Log.e(TAG, "❌ 发送失败: ${e.message}", e)
         }
     }
 }

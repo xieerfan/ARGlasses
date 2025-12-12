@@ -6,89 +6,96 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import java.util.Calendar
 
+// ==================== 小米风格配色方案 ====================
+
 // 根据时间自动选择主题
 fun shouldUseDarkTheme(): Boolean {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-    // 18:00 - 7:00 使用深色主题
     return hour >= 18 || hour < 7
 }
 
-// 浅色主题配色
-private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF6750A4),
+// 浅色主题 - 小米风格（干净、轻盈）
+private val MiLightColorScheme = lightColorScheme(
+    primary = Color(0xFF1F97FF),          // 小米蓝
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFEADDFF),
-    onPrimaryContainer = Color(0xFF21005D),
+    primaryContainer = Color(0xFFE8F4FF),
+    onPrimaryContainer = Color(0xFF003E82),
 
-    secondary = Color(0xFF625B71),
+    secondary = Color(0xFF626262),        // 灰色
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE8DEF8),
-    onSecondaryContainer = Color(0xFF1D192B),
+    secondaryContainer = Color(0xFFEEEEEE),
+    onSecondaryContainer = Color(0xFF212121),
 
-    tertiary = Color(0xFF7D5260),
+    tertiary = Color(0xFFFFA500),         // 橙色
     onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFFFD8E4),
-    onTertiaryContainer = Color(0xFF31111D),
+    tertiaryContainer = Color(0xFFFFE5CC),
+    onTertiaryContainer = Color(0xFF663D00),
 
-    error = Color(0xFFBA1A1A),
+    error = Color(0xFFD32F2F),            // 红色
     onError = Color.White,
-    errorContainer = Color(0xFFFFDAD6),
-    onErrorContainer = Color(0xFF410002),
+    errorContainer = Color(0xFFFFEBEE),
+    onErrorContainer = Color(0xFF840029),
 
-    background = Color(0xFFFFFBFE),
-    onBackground = Color(0xFF1C1B1F),
-    surface = Color(0xFFFFFBFE),
-    onSurface = Color(0xFF1C1B1F),
-    surfaceVariant = Color(0xFFE7E0EC),
-    onSurfaceVariant = Color(0xFF49454F),
+    background = Color(0xFFFAFAFA),       // 极浅灰
+    onBackground = Color(0xFF212121),
+    surface = Color.White,
+    onSurface = Color(0xFF212121),
+    surfaceVariant = Color(0xFFF5F5F5),   // 浅灰背景
+    onSurfaceVariant = Color(0xFF616161),
 
-    outline = Color(0xFF79747E),
-    outlineVariant = Color(0xFFCAC4D0),
+    outline = Color(0xFFBDBDBD),
+    outlineVariant = Color(0xFFE0E0E0),
 )
 
-// 深色主题配色
-private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFFD0BCFF),
-    onPrimary = Color(0xFF381E72),
-    primaryContainer = Color(0xFF4F378B),
-    onPrimaryContainer = Color(0xFFEADDFF),
+// 深色主题 - 小米风格（深蓝、现代）
+private val MiDarkColorScheme = darkColorScheme(
+    primary = Color(0xFF66B1FF),          // 浅蓝
+    onPrimary = Color(0xFF001A4D),
+    primaryContainer = Color(0xFF004A99),
+    onPrimaryContainer = Color(0xFFE8F4FF),
 
-    secondary = Color(0xFFCCC2DC),
-    onSecondary = Color(0xFF332D41),
-    secondaryContainer = Color(0xFF4A4458),
-    onSecondaryContainer = Color(0xFFE8DEF8),
+    secondary = Color(0xFF9E9E9E),        // 浅灰
+    onSecondary = Color(0xFF212121),
+    secondaryContainer = Color(0xFF424242),
+    onSecondaryContainer = Color(0xFFEEEEEE),
 
-    tertiary = Color(0xFFEFB8C8),
-    onTertiary = Color(0xFF492532),
-    tertiaryContainer = Color(0xFF633B48),
-    onTertiaryContainer = Color(0xFFFFD8E4),
+    tertiary = Color(0xFFFFB74D),         // 浅橙
+    onTertiary = Color(0xFF331900),
+    tertiaryContainer = Color(0xFF994C00),
+    onTertiaryContainer = Color(0xFFFFE5CC),
 
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-    errorContainer = Color(0xFF93000A),
-    onErrorContainer = Color(0xFFFFDAD6),
+    error = Color(0xFFFF6B6B),            // 浅红
+    onError = Color(0xFF5A0000),
+    errorContainer = Color(0xFF7A0014),
+    onErrorContainer = Color(0xFFFFEBEE),
 
-    background = Color(0xFF1C1B1F),
-    onBackground = Color(0xFFE6E1E5),
-    surface = Color(0xFF1C1B1F),
-    onSurface = Color(0xFFE6E1E5),
-    surfaceVariant = Color(0xFF49454F),
-    onSurfaceVariant = Color(0xFFCAC4D0),
+    background = Color(0xFF0F0F0F),       // 极深灰/黑
+    onBackground = Color(0xFFF5F5F5),
+    surface = Color(0xFF1A1A1A),          // 深灰
+    onSurface = Color(0xFFF5F5F5),
+    surfaceVariant = Color(0xFF2A2A2A),   // 深灰背景
+    onSurfaceVariant = Color(0xFFBDBDBD),
 
-    outline = Color(0xFF938F99),
-    outlineVariant = Color(0xFF49454F),
+    outline = Color(0xFF616161),
+    outlineVariant = Color(0xFF3F3F3F),
 )
+
+// ==================== Material 3 排版（保持原样）====================
+
+private val MiTypography = Typography()
+
+// ==================== 主题Composable ====================
 
 @Composable
 fun AppTheme(
     darkTheme: Boolean = shouldUseDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val colorScheme = if (darkTheme) MiDarkColorScheme else MiLightColorScheme
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography(),
+        typography = MiTypography,
         content = content
     )
 }

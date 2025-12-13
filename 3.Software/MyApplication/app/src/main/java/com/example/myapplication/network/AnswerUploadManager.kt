@@ -1,4 +1,3 @@
-// 位置: com/example/myapplication/network/AnswerUploadManager.kt
 package com.example.myapplication.network
 
 import android.os.Handler
@@ -12,14 +11,13 @@ import java.util.UUID
 import com.example.myapplication.BleManager
 
 /**
- * ✅ 改进的答案上传管理器
+ * ✅ 改进的答案上传管理器 - 修复版
  *
  * 功能：
  * 1. 将分析答案上传到服务器数据库
  * 2. 如果BLE已连接，同时同步到客户端的 /sdcard/an 目录
  * 3. 支持单个或批量答案上传
  * 4. 自动重试和错误处理
- * 5. ✅ 改进：完整的日志和错误处理
  */
 class AnswerUploadManager(
     private val bleManager: BleManager,
@@ -50,11 +48,6 @@ class AnswerUploadManager(
 
     /**
      * 上传答案文件到服务器和设备
-     *
-     * @param jsonFile JSON答案文件
-     * @param subject 科目名称
-     * @param imageIndex 第几张题目（如 1, 2, 3...）
-     * @param totalImages 总共多少张题目
      */
     fun uploadAnswer(
         jsonFile: File,
@@ -212,7 +205,8 @@ class AnswerUploadManager(
             return
         }
 
-        if (!bleManager.isFileUploadReady()) {
+        // ✅ 修复：改为检查 isFullyInitialized
+        if (!bleManager.isFullyInitialized) {
             Log.w(TAG, "⚠️  BLE文件上传未准备好，跳过设备同步")
             completeUpload()
             return
@@ -283,7 +277,7 @@ class AnswerUploadManager(
             // 第二步：发送文件内容（分块）
             Log.d(TAG, "2️⃣  开始分块发送文件内容...")
             var offset = 0
-            val chunkSize = 400  // 与FileUploadManager保持一致
+            val chunkSize = 400
 
             while (offset < fileBytes.size) {
                 val end = minOf(offset + chunkSize, fileBytes.size)
@@ -308,7 +302,7 @@ class AnswerUploadManager(
 
                 Log.d(TAG, "📊 上传进度: $progress%")
 
-                // 短暂延迟，避免数据发送过快
+                // 短暂延迟
                 Thread.sleep(50)
             }
 

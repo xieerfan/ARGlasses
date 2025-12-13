@@ -1,5 +1,6 @@
 package com.example.myapplication.ui
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,13 +19,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.myapplication.MainActivity
+import kotlinx.coroutines.delay
 
+/**
+ * ✅ 修改：电池充电电流设置对话框
+ *
+ * 改动：
+ * 1. 添加 onSendCommand 回调发送BLE命令
+ * 2. 添加状态保存，记住用户选择
+ * 3. 显示发送状态反馈
+ */
 @Composable
 fun BatteryChargingDialog(
     onDismiss: () -> Unit,
-    onConfirm: (Int) -> Unit
+    onConfirm: (Int) -> Unit,
+    // ✅ 新增：初始电流值和命令发送回调
+    initialCurrent: String = "500mA",
+    onSendCommand: (String, Int) -> Unit = { _, _ -> }  // {命令名, 命令值}
 ) {
-    var selectedCurrent by remember { mutableStateOf("500mA") }
+    var selectedCurrent by remember { mutableStateOf(initialCurrent) }
+    var isLoading by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf("") }
 
     // 电流选项列表（显示值和对应的命令值）
     val chargingCurrents = listOf(
@@ -92,7 +108,8 @@ fun BatteryChargingDialog(
 
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(32.dp),
+                        enabled = !isLoading
                     ) {
                         Icon(
                             Icons.Default.Close,
@@ -132,7 +149,8 @@ fun BatteryChargingDialog(
                             ChargingCurrentItem(
                                 current = display,
                                 isSelected = selectedCurrent == display,
-                                onClick = { selectedCurrent = display }
+                                onClick = { selectedCurrent = display },
+                                enabled = !isLoading
                             )
                         }
                     }
@@ -161,7 +179,38 @@ fun BatteryChargingDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // ✅ 新增：状态消息显示
+                if (statusMessage.isNotEmpty()) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 40.dp),
+                        color = if (statusMessage.contains("✅"))
+                            Color(0xFFD4EDDA)  // 成功绿色
+                        else if (statusMessage.contains("❌"))
+                            Color(0xFFF8D7DA)  // 错误红色
+                        else
+                            Color(0xFFE7F3FF),  // 加载蓝色
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                statusMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
 
                 // 按钮
                 Row(
@@ -173,17 +222,27 @@ fun BatteryChargingDialog(
                         modifier = Modifier
                             .weight(1f)
                             .height(48.dp),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        enabled = !isLoading
                     ) {
                         Text("取消")
                     }
 
                     Button(
                         onClick = {
-                            // 找到对应的命令值
+                            // ✅ 修改：发送命令
                             val commandValue = chargingCurrents.find { it.first == selectedCurrent }?.second ?: 11
+
+                            isLoading = true
+                            statusMessage = "📤 正在发送命令..."
+
+                            // 发送命令
+                            onSendCommand("set_charging_current", commandValue)
+
+                            // ✅ 修改：调用原有的onConfirm
                             onConfirm(commandValue)
-                            onDismiss()
+
+                            Log.d("BatteryCharging", "✅ 充电电流已设置: $selectedCurrent (值: $commandValue)")
                         },
                         modifier = Modifier
                             .weight(1f)
@@ -191,12 +250,21 @@ fun BatteryChargingDialog(
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary
-                        )
+                        ),
+                        enabled = !isLoading
                     ) {
-                        Text(
-                            "确认",
-                            fontWeight = FontWeight.Bold
-                        )
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text(
+                                "确认",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -208,13 +276,14 @@ fun BatteryChargingDialog(
 fun ChargingCurrentItem(
     current: String,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    enabled: Boolean = true
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
         color = if (isSelected)
             MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
         else
@@ -231,6 +300,7 @@ fun ChargingCurrentItem(
             RadioButton(
                 selected = isSelected,
                 onClick = onClick,
+                enabled = enabled,
                 colors = RadioButtonDefaults.colors(
                     selectedColor = MaterialTheme.colorScheme.primary
                 )

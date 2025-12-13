@@ -1,5 +1,3 @@
-// MusicUploadActivity.kt - 修复删除 API
-
 package com.example.myapplication
 
 import android.os.Bundle
@@ -27,9 +25,10 @@ import androidx.compose.ui.unit.dp
 import android.net.Uri
 import com.example.myapplication.config.ConfigManager
 import com.example.myapplication.data.UploadFileInfo
-import com.example.myapplication.data.FileType
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -39,12 +38,8 @@ import java.util.concurrent.TimeUnit
 
 class MusicUploadActivity : ComponentActivity() {
 
-    private lateinit var uploadManager: FileUploadManager
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        uploadManager = FileUploadManager(MainActivity.bleManager)
 
         setContent {
             AppTheme {
@@ -53,7 +48,6 @@ class MusicUploadActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     MusicUploadScreen(
-                        uploadManager = uploadManager,
                         onBack = { finish() }
                     )
                 }
@@ -65,18 +59,18 @@ class MusicUploadActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MusicUploadScreen(
-    uploadManager: FileUploadManager,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val bleManager = MainActivity.bleManager
     val isConnected by bleManager.isConnected.collectAsState()
-    val uploadProgress by uploadManager.uploadProgress.collectAsState()
 
     var selectedFile by remember { mutableStateOf<File?>(null) }
     var uploadedFiles by remember { mutableStateOf<List<UploadFileInfo>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var isDeletingFile by remember { mutableStateOf<String?>(null) }
+    var uploadingFileName by remember { mutableStateOf<String?>(null) }
+    var uploadStatus by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         fetchMusicListFromServer { files ->
@@ -85,20 +79,11 @@ fun MusicUploadScreen(
         }
     }
 
-    LaunchedEffect(uploadProgress) {
-        if (uploadProgress?.isComplete == true && uploadProgress?.errorMessage == null) {
-            selectedFile = null
-            fetchMusicListFromServer { files ->
-                uploadedFiles = files
-            }
-        }
-    }
-
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            val file = copyUriToFile(context, uri, "mp3")
+            val file = copyUriToFileMusic(context, uri, "mp3")
             if (file != null) {
                 selectedFile = file
             }
@@ -169,28 +154,113 @@ fun MusicUploadScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("请选择MP3音乐文件")
                         Spacer(modifier = Modifier.height(8.dp))
-                        Button(onClick = { filePickerLauncher.launch("audio/*") }) {
+                        Button(
+                            onClick = { filePickerLauncher.launch("audio/*") },
+                            enabled = uploadingFileName == null
+                        ) {
                             Text("选择音乐")
                         }
                     } else {
                         Text("已选择: ${selectedFile!!.name}", fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("大小: ${formatFileSize(selectedFile!!.length())}", style = MaterialTheme.typography.labelSmall)
+                        Text("大小: ${formatFileSizeMusic(selectedFile!!.length())}", style = MaterialTheme.typography.labelSmall)
                         Spacer(modifier = Modifier.height(12.dp))
-                        Button(onClick = { selectedFile?.let { uploadManager.uploadFile(it, FileType.MUSIC) } }, modifier = Modifier.fillMaxWidth()) {
-                            Text("上传")
+
+                        Button(
+                            onClick = {
+                                selectedFile?.let { file ->
+                                    val fileName = "/sdcard/music/${file.name}"
+                                    Log.d("MusicUploadActivity", "📤 开始上传: ${file.name}")
+
+                                    uploadingFileName = file.name
+                                    uploadStatus = "📤 BLE 上传中..."
+
+                                    val fileData = file.readBytes()
+
+                                    BleCommandSender.uploadFileData(fileData, fileName) {
+                                        Log.d("MusicUploadActivity", "✅ BLE 上传完成")
+                                        uploadStatus = "📤 服务器同步中..."
+
+                                        uploadMusicToServer(context, file) { success ->
+                                            if (success) {
+                                                Log.d("MusicUploadActivity", "✅ 服务器同步成功")
+                                                uploadStatus = "🔄 刷新列表中..."
+
+                                                Thread.sleep(1000)
+                                                fetchMusicListFromServer { files ->
+                                                    uploadedFiles = files
+                                                    uploadStatus = "✅ 上传完成！"
+                                                    Log.d("MusicUploadActivity", "📋 列表已刷新，共 ${files.size} 首")
+
+                                                    uploadingFileName = null
+                                                    selectedFile = null
+
+                                                    Thread.sleep(2000)
+                                                    uploadStatus = ""
+                                                }
+                                            } else {
+                                                Log.e("MusicUploadActivity", "❌ 服务器同步失败")
+                                                uploadStatus = "⚠️ 设备已接收，但服务器同步失败"
+                                                uploadingFileName = null
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = uploadingFileName == null && isConnected
+                        ) {
+                            if (uploadingFileName != null) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("上传中...")
+                            } else {
+                                Text("上传到 ESP32 + 服务器")
+                            }
                         }
+
                         Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedButton(onClick = { selectedFile = null }, modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { selectedFile = null },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = uploadingFileName == null
+                        ) {
                             Text("取消")
                         }
                     }
 
-                    uploadProgress?.let { progress ->
-                        if (progress.progress > 0 && progress.progress < 100) {
-                            Spacer(modifier = Modifier.height(12.dp))
-//                            LinearProgressIndicator(progress = { progress.progress / 100f }, modifier = Modifier.fillMaxWidth())
-                            Text("${progress.progress}%", style = MaterialTheme.typography.labelSmall)
+                    if (uploadStatus.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    MaterialTheme.colorScheme.secondaryContainer,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            when {
+                                uploadStatus.contains("BLE") -> {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                                uploadStatus.contains("✅") -> {
+                                    Icon(Icons.Filled.CheckCircle, null, tint = Color.Green)
+                                }
+                                uploadStatus.contains("⚠️") -> {
+                                    Icon(Icons.Filled.Warning, null, tint = Color.Yellow)
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(uploadStatus, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
@@ -222,7 +292,12 @@ fun MusicUploadScreen(
                     uploadedFiles.isEmpty() -> {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Filled.MusicNote, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.outline)
+                                Icon(
+                                    Icons.Filled.MusicNote,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(64.dp),
+                                    tint = MaterialTheme.colorScheme.outline
+                                )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text("暂无已上传的音乐", color = MaterialTheme.colorScheme.outline)
                             }
@@ -231,7 +306,11 @@ fun MusicUploadScreen(
                     else -> {
                         LazyColumn(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(uploadedFiles) { fileInfo ->
-                                UploadedMusicItemWithDelete(fileInfo, isDeletingFile == fileInfo.fileName) {
+                                UploadedMusicItemWithDelete(
+                                    fileInfo,
+                                    isDeleting = isDeletingFile == fileInfo.fileName,
+                                    isUploading = uploadingFileName != null
+                                ) {
                                     isDeletingFile = fileInfo.fileName
                                     deleteMusicFile(context, fileInfo.id) {
                                         isDeletingFile = null
@@ -250,7 +329,12 @@ fun MusicUploadScreen(
 }
 
 @Composable
-fun UploadedMusicItemWithDelete(fileInfo: UploadFileInfo, isDeleting: Boolean = false, onDelete: () -> Unit) {
+fun UploadedMusicItemWithDelete(
+    fileInfo: UploadFileInfo,
+    isDeleting: Boolean = false,
+    isUploading: Boolean = false,
+    onDelete: () -> Unit
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -266,26 +350,122 @@ fun UploadedMusicItemWithDelete(fileInfo: UploadFileInfo, isDeleting: Boolean = 
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.MusicNote, contentDescription = null, modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)), tint = Color(0xFF1DB954))
+                Icon(
+                    Icons.Filled.MusicNote,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    tint = Color(0xFF1DB954)
+                )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = fileInfo.fileName, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text(
+                        text = fileInfo.fileName,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(text = formatFileSize(fileInfo.fileSize), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                        Text(text = formatTime(fileInfo.uploadTime), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = formatFileSizeMusic(fileInfo.fileSize),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        Text(
+                            text = formatTimeMusic(fileInfo.uploadTime),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
                     }
                 }
             }
             if (isDeleting) {
                 CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-            } else {
+            } else if (!isUploading) {
                 IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Filled.Delete, contentDescription = "删除", tint = Color.Red)
                 }
             }
         }
     }
+}
+
+/**
+ * ✅ 上传音乐信息到服务器（JSON格式）
+ */
+fun uploadMusicToServer(context: android.content.Context, file: File, onComplete: (Boolean) -> Unit) {
+    Thread {
+        try {
+            val config = ConfigManager.getConfig()
+            val serverIp = config.server.ip
+            val serverPort = config.server.port
+
+            if (serverIp.isEmpty() || serverPort.isEmpty()) {
+                Log.w("MusicUploadActivity", "⚠️ 服务器配置未设置")
+                onComplete(false)
+                return@Thread
+            }
+
+            val client = OkHttpClient.Builder()
+                .connectTimeout(60, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .build()
+
+            val url = "http://${serverIp}:${serverPort}/api/upload/music"
+            Log.d("MusicUploadActivity", "📡 上传文件信息到服务器: $url")
+
+            // ✅ 根据服务端API，发送JSON格式
+            val requestJson = JSONObject().apply {
+                put("music_name", file.name)
+                put("file_size", file.length() / (1024.0 * 1024))  // 转换为MB
+            }
+
+            val requestBody = requestJson.toString()
+                .toRequestBody("application/json; charset=utf-8".toMediaType())
+
+            val request = Request.Builder()
+                .url(url)
+                .post(requestBody)
+                .build()
+
+            Log.d("MusicUploadActivity", "📤 请求体: $requestJson")
+
+            val response = client.newCall(request).execute()
+
+            if (response.isSuccessful) {
+                val body = response.body?.string() ?: ""
+                Log.d("MusicUploadActivity", "✅ 服务器响应: $body")
+
+                try {
+                    val json = JSONObject(body)
+                    val success = json.optBoolean("success", false)
+                    if (success) {
+                        Log.d("MusicUploadActivity", "✅ 音乐信息上传成功")
+                        onComplete(true)
+                    } else {
+                        Log.e("MusicUploadActivity", "❌ 服务器返回失败: ${json.optString("message")}")
+                        onComplete(false)
+                    }
+                } catch (e: Exception) {
+                    Log.e("MusicUploadActivity", "❌ JSON 解析失败: ${e.message}")
+                    onComplete(false)
+                }
+            } else {
+                Log.e("MusicUploadActivity", "❌ 服务器错误: ${response.code}")
+                Log.e("MusicUploadActivity", "❌ 响应体: ${response.body?.string()}")
+                onComplete(false)
+            }
+
+        } catch (e: Exception) {
+            Log.e("MusicUploadActivity", "❌ 上传异常: ${e.message}", e)
+            onComplete(false)
+        }
+    }.start()
 }
 
 fun fetchMusicListFromServer(onSuccess: (List<UploadFileInfo>) -> Unit) {
@@ -314,8 +494,6 @@ fun fetchMusicListFromServer(onSuccess: (List<UploadFileInfo>) -> Unit) {
 
             if (response.isSuccessful) {
                 val body = response.body?.string() ?: ""
-                Log.d("MusicUploadActivity", "✅ 服务器返回: $body")
-
                 val files = parseMusicResponse(body)
                 Log.d("MusicUploadActivity", "✅ 解析成功，共 ${files.size} 首音乐")
                 onSuccess(files)
@@ -336,7 +514,6 @@ private fun parseMusicResponse(jsonString: String): List<UploadFileInfo> {
         val root = JSONObject(jsonString)
 
         if (!root.optBoolean("success")) {
-            Log.e("MusicUploadActivity", "❌ 服务器返回失败")
             return emptyList()
         }
 
@@ -348,14 +525,13 @@ private fun parseMusicResponse(jsonString: String): List<UploadFileInfo> {
         for (i in 0 until listArray.length()) {
             val item = listArray.getJSONObject(i)
 
-            // ✅ 获取 ID
             val musicId = item.optInt("id", 0)
             val musicName = item.optString("music_name", "未知")
             val fileSizeMb = item.optDouble("file_size_mb", 0.0)
             val uploadTimeStr = item.optString("upload_time", "")
 
             val fileSize = (fileSizeMb * 1024 * 1024).toLong()
-            val uploadTime = parseTimeString(uploadTimeStr)
+            val uploadTime = parseTimeStringMusic(uploadTimeStr)
 
             result.add(
                 UploadFileInfo(
@@ -366,8 +542,6 @@ private fun parseMusicResponse(jsonString: String): List<UploadFileInfo> {
                     uploadTime = uploadTime
                 )
             )
-
-            Log.d("MusicUploadActivity", "✅ 解析: ID=$musicId $musicName (${fileSizeMb}MB)")
         }
 
         result
@@ -377,7 +551,7 @@ private fun parseMusicResponse(jsonString: String): List<UploadFileInfo> {
     }
 }
 
-private fun parseTimeString(timeStr: String): Long {
+private fun parseTimeStringMusic(timeStr: String): Long {
     return try {
         if (timeStr.isEmpty()) System.currentTimeMillis()
         else {
@@ -385,12 +559,10 @@ private fun parseTimeString(timeStr: String): Long {
             format.parse(timeStr)?.time ?: System.currentTimeMillis()
         }
     } catch (e: Exception) {
-        Log.w("MusicUploadActivity", "⚠️ 时间解析失败: $timeStr")
         System.currentTimeMillis()
     }
 }
 
-// ✅ 修复删除函数 - 调用正确的 API
 fun deleteMusicFile(context: android.content.Context, musicId: Int, onComplete: () -> Unit) {
     Thread {
         try {
@@ -405,9 +577,7 @@ fun deleteMusicFile(context: android.content.Context, musicId: Int, onComplete: 
                 .readTimeout(10, TimeUnit.SECONDS)
                 .build()
 
-            // ✅ 调用正确的 API：/api/music/<id>
             val url = "http://${serverIp}:${serverPort}/api/music/$musicId"
-            Log.d("MusicUploadActivity", "📡 删除 URL: $url")
 
             val request = Request.Builder().url(url).delete().build()
             val response = client.newCall(request).execute()
@@ -426,7 +596,7 @@ fun deleteMusicFile(context: android.content.Context, musicId: Int, onComplete: 
     }.start()
 }
 
-fun copyUriToFile(context: android.content.Context, uri: Uri, extension: String): File? {
+fun copyUriToFileMusic(context: android.content.Context, uri: Uri, extension: String): File? {
     return try {
         val inputStream = context.contentResolver.openInputStream(uri) ?: return null
         val fileName = "music_${System.currentTimeMillis()}.$extension"
@@ -439,13 +609,13 @@ fun copyUriToFile(context: android.content.Context, uri: Uri, extension: String)
     }
 }
 
-fun formatFileSize(bytes: Long): String = when {
+fun formatFileSizeMusic(bytes: Long): String = when {
     bytes < 1024 -> "$bytes B"
     bytes < 1024 * 1024 -> "${bytes / 1024} KB"
     else -> "${String.format("%.2f", bytes / (1024.0 * 1024))} MB"
 }
 
-fun formatTime(timeMillis: Long): String {
+fun formatTimeMusic(timeMillis: Long): String {
     val sdf = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
     return sdf.format(Date(timeMillis))
 }

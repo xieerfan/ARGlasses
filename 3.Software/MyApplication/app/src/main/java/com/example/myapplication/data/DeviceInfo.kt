@@ -41,9 +41,9 @@ data class UploadProgress(
 
 // 文件类型
 enum class FileType(val extension: String, val targetPath: String) {
-    MUSIC("mp3", "/sdcard/music"),
-    NOVEL("txt", "/sdcard/novel"),
-    ANSWER("json", "/sdcard/an")  // ✅ 新增：答案文件
+    MUSIC("mp3", "/music"),
+    NOVEL("txt", "/novel"),
+    ANSWER("json", "/an")  // ✅ 新增：答案文件
 }
 
 // ✅ 新增：分析答案信息

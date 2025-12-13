@@ -1,4 +1,3 @@
-// 位置: com/example/myapplication/ui/AiProcessActivity.kt
 package com.example.myapplication.ui
 
 import android.os.Bundle
@@ -34,36 +33,22 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
-import com.example.myapplication.BleManager
 import com.example.myapplication.ImageEnhancer
 import com.example.myapplication.ImageSplitter
 
 /**
- * ✅ 修复后的AiProcessActivity
- *
- * 改进点：
- * 1. ✅ 在onCreate时清空前次的接收图片
- * 2. ✅ 集成AnswerUploadManager
- * 3. ✅ 处理完成后自动上传答案
- * 4. 显示JSON结果文件
- * 5. 答案删除功能（本地+数据库）
- *
- * 修复：
- * - 移除receivedFiles引用，改为使用receivedImage.collect
- * - 修复类型推断问题
- * - 简化BLE回调处理
+ * ✅ 修复：添加科目选择状态，BLE回调时使用UI选择的科目
  */
 class AiProcessActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "AiProcessActivity"
-        private const val CLEANUP_TAG = "CLEANUP"
+        private const val DEFAULT_SUBJECT = "数学"
     }
 
     private val handler = Handler(Looper.getMainLooper())
     private var isRunning = false
     private var isTransferring = false
-    private var isBleProcessing = false
 
     private lateinit var imageEnhancer: ImageEnhancer
     private lateinit var imageSplitter: ImageSplitter
@@ -95,12 +80,18 @@ class AiProcessActivity : ComponentActivity() {
     val progressLogsCount: StateFlow<Int> = _progressLogsCount
     val jsonResultsCount: StateFlow<Int> = _jsonResultsCount
 
+    // ✅ 新增：保存UI上选择的科目，BLE回调时使用这个值
+    private val _selectedSubject = MutableStateFlow("physics")
+    val selectedSubject: StateFlow<String> = _selectedSubject
+
     private var processingJob: Job? = null
 
-    private val imagesDir by lazy { File(filesDir, "images") }
-    private val enhancedDir by lazy { File(imagesDir, "enhanced") }
-    private val regionsDir by lazy { File(imagesDir, "regions") }
-    private val resultsDir by lazy { File(filesDir, "results") }
+    // ✅ 统一的目录定义
+    private val baseDir by lazy { File(filesDir, "ai_process") }
+    private val originalImagesDir by lazy { File(baseDir, "original") }
+    private val enhancedDir by lazy { File(baseDir, "enhanced") }
+    private val regionsDir by lazy { File(baseDir, "regions") }
+    private val resultsDir by lazy { File(baseDir, "results") }
 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -111,7 +102,7 @@ class AiProcessActivity : ComponentActivity() {
     private val requestImageRunnable = object : Runnable {
         override fun run() {
             if (isRunning && !isTransferring) {
-                MainActivity.bleManager.sendCommand("takeimage")
+                MainActivity.bleManager.readImageLength()
             }
             handler.postDelayed(this, 2000)
         }
@@ -119,20 +110,19 @@ class AiProcessActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         Log.d(TAG, "✨ Activity创建")
 
-        // ✅ 新增：在onCreate时清空前次的接收图片和缓存
+        // ✅ 初始化目录
+        initializeDirectories()
+
+        // ✅ 清空前次的数据
         clearPreviousData()
 
         imageEnhancer = ImageEnhancer(this)
         imageSplitter = ImageSplitter(this)
         processingManager = ImageProcessingManager(this)
 
-        // ✅ 新增：创建AnswerUploadManager
         answerUploadManager = AnswerUploadManager(MainActivity.bleManager, NetworkManager)
-
-        // ✅ 新增：关联AnswerUploadManager到ImageProcessingManager
         processingManager.setAnswerUploadManager(answerUploadManager)
 
         if (!processingManager.initialize()) {
@@ -163,7 +153,11 @@ class AiProcessActivity : ComponentActivity() {
                         receiveProgress = receiveProgress,
                         jsonResults = jsonResults,
                         onTakePicture = { cameraHelper.takePictureWithPermission(permissionLauncher) },
-                        onStartProcess = { subject -> startProcessing(subject) },
+                        onStartProcess = { subject ->
+                            // ✅ 更新选择的科目
+                            _selectedSubject.value = subject
+                            startProcessing(subject)
+                        },
                         onDeleteAll = { deleteAllImages() },
                         onDeleteAnswer = { answerId, fileName -> deleteAnswer(answerId, fileName) },
                         isBleConnected = isBleConnected,
@@ -182,43 +176,67 @@ class AiProcessActivity : ComponentActivity() {
     }
 
     /**
-     * ✅ 新增：清空前次的数据
+     * ✅ 初始化所有必要的目录
+     */
+    private fun initializeDirectories() {
+        try {
+            Log.d(TAG, "📁 初始化目录结构...")
+
+            // 创建所有必要的目录
+            listOf(baseDir, originalImagesDir, enhancedDir, regionsDir, resultsDir).forEach { dir ->
+                if (!dir.exists()) {
+                    val created = dir.mkdirs()
+                    Log.d(TAG, "📁 ${dir.name}: ${if (created) "✅ 已创建" else "⚠️ 创建失败"}")
+                    Log.d(TAG, "   路径: ${dir.absolutePath}")
+                } else {
+                    Log.d(TAG, "📁 ${dir.name}: ✅ 已存在")
+                    Log.d(TAG, "   路径: ${dir.absolutePath}")
+                }
+            }
+
+            Log.d(TAG, "✅ 目录初始化完成")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 目录初始化失败: ${e.message}", e)
+        }
+    }
+
+    /**
+     * ✅ 清空前次的数据
      */
     private fun clearPreviousData() {
         try {
             Log.d(TAG, "🧹 清空前次的数据...")
 
-            // 清空列表
             receivedImages.clear()
             enhancedImages.clear()
             splitImages.clear()
             receiveProgress.clear()
 
-            // 重置计数
             _receivedImagesCount.value = 0
             _enhancedImagesCount.value = 0
             _progressLogsCount.value = 0
 
-            // 清空接收目录
-            try {
-                val originalImagesDir = File(filesDir, "original_images")
-                if (originalImagesDir.exists()) {
-                    originalImagesDir.deleteRecursively()
-                    Log.d(TAG, "✅ 已清空原始图片目录")
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "⚠️  清空原始图片目录失败: ${e.message}")
+            // 删除原始图片
+            if (originalImagesDir.exists()) {
+                originalImagesDir.deleteRecursively()
+                Log.d(TAG, "✅ 已清空原始图片目录")
             }
 
-            // 清空images/received目录
-            try {
-                val imagesReceivedDir = File(imagesDir, "received")
-                if (imagesReceivedDir.exists()) {
-                    imagesReceivedDir.deleteRecursively()
-                    Log.d(TAG, "✅ 已清空images/received目录")
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "⚠️  清空images/received目录失败: ${e.message}")
+            // 删除增强后的图片
+            if (enhancedDir.exists()) {
+                enhancedDir.deleteRecursively()
+                Log.d(TAG, "✅ 已清空增强图片目录")
+            }
+
+            // 删除分割的区域
+            if (regionsDir.exists()) {
+                regionsDir.deleteRecursively()
+                Log.d(TAG, "✅ 已清空区域目录")
+            }
+
+            // 重新创建空目录
+            listOf(originalImagesDir, enhancedDir, regionsDir).forEach { dir ->
+                dir.mkdirs()
             }
 
             Log.d(TAG, "✅ 前次数据清空完成")
@@ -231,20 +249,14 @@ class AiProcessActivity : ComponentActivity() {
     private fun loadJsonResults() {
         try {
             jsonResults.clear()
-            val resultDirs = listOf(
-                File(filesDir, "results"),
-                resultsDir
-            )
 
-            resultDirs.forEach { dir ->
-                if (dir.exists() && dir.isDirectory) {
-                    dir.listFiles { file ->
-                        file.extension == "json"
-                    }?.forEach { jsonFile ->
-                        if (!jsonResults.contains(jsonFile)) {
-                            jsonResults.add(jsonFile)
-                            Log.d(TAG, "📄 加载JSON结果: ${jsonFile.name}")
-                        }
+            if (resultsDir.exists() && resultsDir.isDirectory) {
+                resultsDir.listFiles { file ->
+                    file.extension == "json"
+                }?.forEach { jsonFile ->
+                    if (!jsonResults.contains(jsonFile)) {
+                        jsonResults.add(jsonFile)
+                        Log.d(TAG, "📄 加载JSON结果: ${jsonFile.name}")
                     }
                 }
             }
@@ -257,85 +269,132 @@ class AiProcessActivity : ComponentActivity() {
     }
 
     private fun setupBleCallbacks() {
-        // 日志收集
+        // 监听 BLE 连接状态
         lifecycleScope.launch {
-            MainActivity.bleManager.logs.collect { logs ->
-                logs.lastOrNull()?.let { msg ->
-                    when {
-                        msg.contains("image_ready") -> {
-                            isTransferring = true
-                            addProgressLog("📥 开始接收图片...")
-                        }
-                        msg.contains("image_end") -> {
-                            isTransferring = false
-                            addProgressLog("✅ 图片接收完成")
-                        }
-                        msg.contains("连接") -> {
-                            _isBleConnected.value = true
-                            addProgressLog("🔗 BLE已连接")
-                        }
-                        msg.contains("断开") -> {
-                            _isBleConnected.value = false
-                            addProgressLog("⚠️ BLE已断开")
-                        }
-                    }
+            MainActivity.bleManager.isConnected.collect { isConnected ->
+                _isBleConnected.value = isConnected
+                if (isConnected) {
+                    addProgressLog("🔗 BLE已连接")
+                } else {
+                    addProgressLog("⚠️ BLE已断开")
                 }
             }
         }
 
-        // 接收图片数据
+        // 监听接收到的图片数据
         lifecycleScope.launch {
             MainActivity.bleManager.receivedImage.collect { imageData ->
-                imageData?.let { saveReceivedImage(it) }
+                imageData?.let {
+                    saveReceivedImage(it)
+                    isTransferring = false
+                    addProgressLog("✅ 图片接收完成")
+                }
             }
         }
 
-        // 接收BLE命令
+        // 监听 AI 工作命令 - ✅ 修复：使用UI选择的科目
         lifecycleScope.launch {
-            MainActivity.bleManager.receivedCommand.collect { command ->
-                if (command == "ai_work") {
-                    Log.d(TAG, "📱 收到BLE处理命令: ai_work")
+            MainActivity.bleManager.aiWorkCommand.collect { shouldProcess ->
+                if (shouldProcess) {
+                    // ✅ 获取当前UI选择的科目
+                    val currentSubject = _selectedSubject.value
+                    Log.d(TAG, "🤖 检测到AI工作命令，准备启动处理，科目: $currentSubject")
+                    addProgressLog("🤖 设备发送AI工作命令，准备启动处理，科目: $currentSubject")
 
-                    if (isBleProcessing) {
-                        Log.w(TAG, "⚠️  已在处理中，忽略重复的BLE命令")
-                        return@collect
+                    delay(500)
+
+                    if (receivedImages.isNotEmpty()) {
+                        addProgressLog("📸 发现${receivedImages.size}张图片，开始处理...")
+                        // ✅ 使用UI选择的科目，不是硬编码的"数学"
+                        startProcessing(currentSubject)
+                    } else {
+                        addProgressLog("⚠️ 没有接收到图片，请先上传图片")
                     }
-
-                    isBleProcessing = true
-                    addProgressLog("🤖 收到BLE处理命令")
-
-                    val subject = "physics"
-                    startProcessing(subject)
-
-                    isBleProcessing = false
                 }
             }
         }
     }
 
+    /**
+     * ✅ 保存接收到的图片 - 修复版本
+     */
     private fun saveReceivedImage(imageData: ByteArray) {
         try {
-            val dir = File(filesDir, "original_images").apply { mkdirs() }
-            val file = File(dir, "image_${System.currentTimeMillis()}.jpg")
-            FileOutputStream(file).use { it.write(imageData) }
-            receivedImages.add(file)
-            _receivedImagesCount.value = receivedImages.size
-            addProgressLog("📷 接收图片: ${file.name} (共${receivedImages.size}张)")
+            // 确保目录存在
+            if (!originalImagesDir.exists()) {
+                originalImagesDir.mkdirs()
+                Log.d(TAG, "📁 创建原始图片目录: ${originalImagesDir.absolutePath}")
+            }
+
+            val fileName = "image_${System.currentTimeMillis()}.jpg"
+            val file = File(originalImagesDir, fileName)
+
+            // 保存文件
+            FileOutputStream(file).use { output ->
+                output.write(imageData)
+                output.flush()
+            }
+
+            // 验证文件是否成功保存
+            if (file.exists() && file.length() > 0) {
+                receivedImages.add(file)
+                _receivedImagesCount.value = receivedImages.size
+
+                Log.d(TAG, "✅ 图片保存成功")
+                Log.d(TAG, "   文件名: $fileName")
+                Log.d(TAG, "   文件大小: ${file.length()} 字节")
+                Log.d(TAG, "   完整路径: ${file.absolutePath}")
+                Log.d(TAG, "   共接收: ${receivedImages.size} 张")
+
+                addProgressLog("📷 接收图片: $fileName (共${receivedImages.size}张)")
+            } else {
+                Log.e(TAG, "❌ 文件保存失败，文件不存在或大小为0")
+                addProgressLog("❌ 图片保存失败: 文件验证失败")
+            }
+
         } catch (e: Exception) {
+            Log.e(TAG, "❌ 保存图片异常: ${e.message}", e)
             addProgressLog("❌ 保存失败: ${e.message}")
         }
     }
 
+    /**
+     * ✅ 拍照后保存 - 修复版本
+     */
     private fun addPhotoToReceivedImages(photoFile: File) {
         try {
-            val dir = File(filesDir, "original_images").apply { mkdirs() }
-            val copiedFile = File(dir, "photo_${System.currentTimeMillis()}.jpg")
+            // 确保目录存在
+            if (!originalImagesDir.exists()) {
+                originalImagesDir.mkdirs()
+                Log.d(TAG, "📁 创建原始图片目录: ${originalImagesDir.absolutePath}")
+            }
+
+            val fileName = "photo_${System.currentTimeMillis()}.jpg"
+            val copiedFile = File(originalImagesDir, fileName)
+
+            // 复制文件
             photoFile.copyTo(copiedFile, overwrite = true)
-            receivedImages.add(copiedFile)
-            _receivedImagesCount.value = receivedImages.size
-            addProgressLog("📸 拍照上传: ${copiedFile.name} (共${receivedImages.size}张)")
+
+            // 验证文件是否成功复制
+            if (copiedFile.exists() && copiedFile.length() > 0) {
+                receivedImages.add(copiedFile)
+                _receivedImagesCount.value = receivedImages.size
+
+                Log.d(TAG, "✅ 拍照保存成功")
+                Log.d(TAG, "   源文件: ${photoFile.absolutePath}")
+                Log.d(TAG, "   目标文件: ${copiedFile.absolutePath}")
+                Log.d(TAG, "   文件大小: ${copiedFile.length()} 字节")
+                Log.d(TAG, "   共接收: ${receivedImages.size} 张")
+
+                addProgressLog("📸 拍照上传: $fileName (共${receivedImages.size}张)")
+            } else {
+                Log.e(TAG, "❌ 拍照保存失败，文件不存在或大小为0")
+                addProgressLog("❌ 拍照保存失败: 文件验证失败")
+            }
+
         } catch (e: Exception) {
-            addProgressLog("❌ 添加失败: ${e.message}")
+            Log.e(TAG, "❌ 拍照保存异常: ${e.message}", e)
+            addProgressLog("❌ 拍照失败: ${e.message}")
         }
     }
 
@@ -355,14 +414,44 @@ class AiProcessActivity : ComponentActivity() {
         processingJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
                 _isProcessing.value = true
+
+                // ✅ 新增：处理过程中停止图片接收
+                handler.removeCallbacks(requestImageRunnable)
+                addProgressLog("⏸️  已暂停图片接收，开始处理...")
+                Log.d(TAG, "⏸️  已停止 requestImageRunnable")
+
                 addProgressLog("🎬 开始处理流程，科目: $subject")
 
-                // 设置进度回调
+                // ✅ 记录接收到的图片
+                Log.d(TAG, "📊 处理图片统计:")
+                Log.d(TAG, "   接收图片数: ${receivedImages.size}")
+                Log.d(TAG, "   原始图片目录: ${originalImagesDir.absolutePath}")
+                Log.d(TAG, "   增强图片目录: ${enhancedDir.absolutePath}")
+                Log.d(TAG, "   区域目录: ${regionsDir.absolutePath}")
+
+                // 验证原始图片目录
+                if (!originalImagesDir.exists()) {
+                    Log.e(TAG, "❌ 原始图片目录不存在!")
+                    addProgressLog("❌ 错误: 原始图片目录不存在")
+                    _isProcessing.value = false
+                    return@launch
+                }
+
+                val imageFiles = originalImagesDir.listFiles() ?: emptyArray()
+                Log.d(TAG, "📁 原始图片目录中找到 ${imageFiles.size} 个文件")
+                imageFiles.forEach { file ->
+                    Log.d(TAG, "   - ${file.name} (${file.length()} 字节)")
+                }
+
                 processingManager.setAnalysisCallback { title, message ->
                     addProgressLog("$title: $message")
                 }
 
-                // 执行处理
+                // ✅ 新增：设置JSON发送回调
+                processingManager.setJsonSendCallback { jsonFile ->
+                    sendJsonToEsp32(jsonFile)
+                }
+
                 val result = processingManager.processAllImages(
                     subject = subject,
                     enhancedDir = enhancedDir,
@@ -372,12 +461,8 @@ class AiProcessActivity : ComponentActivity() {
 
                 if (result.success) {
                     addProgressLog("✅ AI分析完成: ${result.totalAnalyzed} 张")
-
-                    // 处理完成后重新加载JSON结果
                     loadJsonResults()
                     addProgressLog("📄 已刷新JSON结果")
-
-                    // 稍等一下，等待上传完成
                     delay(2000)
                 } else {
                     addProgressLog("❌ AI分析失败: ${result.message}")
@@ -386,32 +471,77 @@ class AiProcessActivity : ComponentActivity() {
                 addProgressLog("✅ 处理流程完成")
                 _isProcessing.value = false
 
+                // ✅ 新增：处理完成后恢复图片接收
+                delay(500)
+                handler.post(requestImageRunnable)
+                addProgressLog("▶️  已恢复图片接收")
+                Log.d(TAG, "▶️  已重启 requestImageRunnable")
+
             } catch (e: Exception) {
                 Log.e(TAG, "❌ 处理异常: ${e.message}", e)
                 addProgressLog("❌ 处理异常: ${e.message}")
                 _isProcessing.value = false
+
+                // ✅ 异常时也要恢复图片接收
+                handler.post(requestImageRunnable)
+                addProgressLog("▶️  异常处理后已恢复图片接收")
             }
+        }
+    }
+
+    /**
+     * ✅ 新增：发送JSON结果到ESP32
+     */
+    private fun sendJsonToEsp32(jsonFile: File) {
+        try {
+            Log.d(TAG, "📤 开始发送JSON到ESP32: ${jsonFile.name}")
+
+            // 读取JSON内容
+            val jsonContent = jsonFile.readText(Charsets.UTF_8)
+            Log.d(TAG, "📋 JSON内容: $jsonContent")
+
+            // 通过BLE发送JSON
+            MainActivity.bleManager.sendJsonResult(jsonContent)
+
+            Log.d(TAG, "✅ JSON已发送到ESP32")
+            addProgressLog("📤 JSON结果已发送到设备")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 发送JSON异常: ${e.message}", e)
+            addProgressLog("❌ 发送JSON失败: ${e.message}")
         }
     }
 
     private fun deleteAllImages() {
         try {
-            listOf("original_images", "enhanced_images", "split_images").forEach {
-                File(filesDir, it).deleteRecursively()
+            // 删除基础目录下的所有图片
+            listOf(originalImagesDir, enhancedDir, regionsDir).forEach { dir ->
+                if (dir.exists()) {
+                    dir.deleteRecursively()
+                    Log.d(TAG, "✅ 已删除目录: ${dir.absolutePath}")
+                }
             }
+
             receivedImages.clear()
             enhancedImages.clear()
             splitImages.clear()
             _receivedImagesCount.value = 0
             _enhancedImagesCount.value = 0
+
+            // 重新创建空目录
+            listOf(originalImagesDir, enhancedDir, regionsDir).forEach { dir ->
+                dir.mkdirs()
+            }
+
             addProgressLog("🗑️  已删除所有图片")
         } catch (e: Exception) {
+            Log.e(TAG, "❌ 删除图片失败: ${e.message}", e)
             addProgressLog("❌ 删除失败: ${e.message}")
         }
     }
 
     /**
-     * 删除答案（本地和数据库）
+     * ✅ 删除答案（本地和数据库）
      */
     private fun deleteAnswer(answerId: String, fileName: String) {
         lifecycleScope.launch(Dispatchers.IO) {
@@ -476,119 +606,10 @@ class AiProcessActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        Log.d(TAG, "🗑️  Activity销毁 - 开始清理")
-
+        Log.d(TAG, "🗑️  Activity销毁")
         isRunning = false
         handler.removeCallbacks(requestImageRunnable)
         processingJob?.cancel()
-
         super.onDestroy()
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                delay(100)
-                cleanupAllFiles()
-            } catch (e: Exception) {
-                Log.e(CLEANUP_TAG, "❌ 清理线程异常: ${e.message}")
-            }
-        }
-
-        Log.d(TAG, "🗑️  onDestroy完成")
-    }
-
-    private fun cleanupAllFiles() {
-        try {
-            Log.d(CLEANUP_TAG, "🧹 开始清理所有文件...")
-
-            Log.d(CLEANUP_TAG, "📂 清理旧位置文件...")
-            listOf("original_images", "enhanced_images", "split_images", "results").forEach {
-                try {
-                    File(filesDir, it).deleteRecursively()
-                    Log.d(CLEANUP_TAG, "✅ 删除旧目录: $it")
-                } catch (e: Exception) {
-                    Log.w(CLEANUP_TAG, "⚠️  删除旧目录失败 $it: ${e.message}")
-                }
-            }
-
-            Log.d(CLEANUP_TAG, "📂 清理新位置文件...")
-            cleanupDirectory(resultsDir, "分析结果")
-            cleanupDirectory(regionsDir, "分割区域图片")
-            cleanupDirectory(enhancedDir, "增强后的图片")
-            cleanupDirectory(imagesDir, "原始图片", deleteDir = false)
-
-            Log.d(CLEANUP_TAG, "✅ 清理完成！所有临时文件已删除")
-
-        } catch (e: Exception) {
-            Log.e(CLEANUP_TAG, "❌ 清理失败: ${e.message}", e)
-        }
-    }
-
-    private fun cleanupDirectory(directory: File, description: String, deleteDir: Boolean = true) {
-        if (!directory.exists()) {
-            Log.d(CLEANUP_TAG, "⏭️  目录不存在，跳过: $description")
-            return
-        }
-
-        val files = directory.listFiles()
-        if (files == null) {
-            Log.w(CLEANUP_TAG, "⚠️  无法读取目录: $description")
-            return
-        }
-
-        var deletedCount = 0
-        var failedCount = 0
-
-        files.forEach { file ->
-            try {
-                if (file.isDirectory) {
-                    deleteDirectoryRecursively(file)
-                    Log.d(CLEANUP_TAG, "📁 删除目录: ${file.name}")
-                    deletedCount++
-                } else {
-                    if (file.delete()) {
-                        Log.d(CLEANUP_TAG, "🗑️  删除文件: ${file.name}")
-                        deletedCount++
-                    } else {
-                        Log.w(CLEANUP_TAG, "⚠️  删除失败: ${file.name}")
-                        failedCount++
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(CLEANUP_TAG, "❌ 清理失败: ${file.name} - ${e.message}")
-                failedCount++
-            }
-        }
-
-        if (deleteDir) {
-            try {
-                if (directory.delete()) {
-                    Log.d(CLEANUP_TAG, "📁 删除目录: ${directory.name}")
-                    deletedCount++
-                }
-            } catch (e: Exception) {
-                Log.e(CLEANUP_TAG, "❌ 删除目录失败: ${directory.name}")
-            }
-        }
-
-        if (deletedCount > 0 || failedCount > 0) {
-            Log.d(CLEANUP_TAG, "📊 $description - 成功删除: $deletedCount, 失败: $failedCount")
-        }
-    }
-
-    private fun deleteDirectoryRecursively(directory: File): Boolean {
-        return if (directory.isDirectory) {
-            val children = directory.listFiles() ?: return directory.delete()
-            var allDeleted = true
-
-            for (child in children) {
-                if (!deleteDirectoryRecursively(child)) {
-                    allDeleted = false
-                }
-            }
-
-            if (allDeleted) directory.delete() else false
-        } else {
-            directory.delete()
-        }
     }
 }

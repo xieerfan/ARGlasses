@@ -9,8 +9,6 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.example.myapplication.ble.BleConstants
-import com.example.myapplication.data.CharacteristicInfo
-import com.example.myapplication.data.DeviceInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.util.*
@@ -18,44 +16,29 @@ import java.util.*
 class BleManager(private val context: Context) {
     private val TAG = "BleManager"
 
-    // ==================== 数据类和接口 ====================
+    data class BleDevice(val name: String, val address: String)
 
-    data class BleDevice(
-        val name: String,
-        val address: String
-    )
-
-    /**
-     * 写入回调接口 - 用于处理异步写入操作
-     */
-    interface WriteCallback {
-        fun onWriteSuccess()
-        fun onWriteFailure(error: String)
-    }
-
-    // ==================== 成员变量 ====================
-
+    // ==================== 核心成员变量 ====================
     private val bluetoothAdapter: BluetoothAdapter? =
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
 
     private var bluetoothGatt: BluetoothGatt? = null
+    private val deviceMap = mutableMapOf<String, android.bluetooth.BluetoothDevice>()
+    private val handler = Handler(Looper.getMainLooper())
 
-    // 写入回调
-    private var writeCallback: WriteCallback? = null
-
-    // Service 1 - 文件上传特征
+    // BLE 特征
     private var fileDataCharacteristic: BluetoothGattCharacteristic? = null
     private var fileControlCharacteristic: BluetoothGattCharacteristic? = null
     private var fileNameCharacteristic: BluetoothGattCharacteristic? = null
+    private var imageLengthCharacteristic: BluetoothGattCharacteristic? = null
+    private var imageCommandCharacteristic: BluetoothGattCharacteristic? = null
+    private var imageDataCharacteristic: BluetoothGattCharacteristic? = null
 
-    // Service 2 - 图片传输特征
-    private var imageCharacteristic: BluetoothGattCharacteristic? = null
-    private var commandCharacteristic: BluetoothGattCharacteristic? = null
-    private var notificationCharacteristic: BluetoothGattCharacteristic? = null
+    // ✅ 修复：分离两个不同的特征
+    private var controlCommandCharacteristic: BluetoothGattCharacteristic? = null  // 特征3_2 - 控制命令（发送）
+    private var statusNotificationCharacteristic: BluetoothGattCharacteristic? = null  // 特征3_3 - 状态通知（接收）
 
-    // Service 3 - 数据通知特征
-    private var statusNotificationCharacteristic: BluetoothGattCharacteristic? = null
-
+    // UI 状态
     private val _devices = MutableStateFlow<List<BleDevice>>(emptyList())
     val devices: StateFlow<List<BleDevice>> = _devices
 
@@ -65,57 +48,46 @@ class BleManager(private val context: Context) {
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected
 
-    private val _connectionState = MutableStateFlow<String>("未连接")
-    val connectionState: StateFlow<String> = _connectionState
-
     private val _receivedImage = MutableStateFlow<ByteArray?>(null)
     val receivedImage: StateFlow<ByteArray?> = _receivedImage
 
     private val _transferProgress = MutableStateFlow<String>("")
     val transferProgress: StateFlow<String> = _transferProgress
 
-    private val _receivedCommand = MutableStateFlow<String?>(null)
-    val receivedCommand: StateFlow<String?> = _receivedCommand
+    // ✅ 新增：AI工作命令状态
+    private val _aiWorkCommand = MutableStateFlow<Boolean>(false)
+    val aiWorkCommand: StateFlow<Boolean> = _aiWorkCommand
 
-    private val _deviceInfo = MutableStateFlow(DeviceInfo())
-    val deviceInfo: StateFlow<DeviceInfo> = _deviceInfo
-
-    private var imageBuffer = mutableListOf<Byte>()
-    private var expectedImageSize = 0
-    private var isReceivingImage = false
-
+    // 连接状态
     var isFullyInitialized = false
     private var notificationsEnabled = false
     private var mtuNegotiated = false
     private var currentMtuSize = 23
 
-    private val deviceMap = mutableMapOf<String, android.bluetooth.BluetoothDevice>()
+    // ✅ 图片接收状态
+    private var imageBuffer = ByteArray(0)
+    private var expectedImageSize = 0
+    private var currentImageOffset = 0
+    private var isReceivingImage = false
 
-    private val handler = Handler(Looper.getMainLooper())
+    // ✅ 防止重复发送 takeimage
+    private var isWaitingForImageReady = false
 
-    private var lastDataReceivedTime = 0L
-    private var currentChunkBuffer = mutableListOf<Byte>()
-
-    // ==================== 日志和工具方法 ====================
-
+    // ==================== 日志 ====================
     private fun addLog(message: String) {
-        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-            .format(Date())
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
         val newLog = "[$timestamp] $message"
         _logs.value = (_logs.value + newLog).takeLast(100)
         Log.d(TAG, message)
     }
 
-    // ==================== 扫描相关 ====================
-
+    // ==================== 扫描 ====================
     @SuppressLint("MissingPermission")
     fun startScan() {
         addLog("📡 开始扫描BLE设备...")
         _devices.value = emptyList()
         deviceMap.clear()
-
-        val scanner = bluetoothAdapter?.bluetoothLeScanner
-        scanner?.startScan(scanCallback)
+        bluetoothAdapter?.bluetoothLeScanner?.startScan(scanCallback)
     }
 
     @SuppressLint("MissingPermission")
@@ -129,560 +101,559 @@ class BleManager(private val context: Context) {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             result?.let {
                 if (it.device.name == BleConstants.DEVICE_NAME) {
-                    val bleDevice = BleDevice(
-                        name = it.device.name ?: "未知设备",
-                        address = it.device.address
-                    )
-
+                    val bleDevice = BleDevice(it.device.name ?: "未知设备", it.device.address)
                     val currentDevices = _devices.value.toMutableList()
                     if (!currentDevices.any { d -> d.address == bleDevice.address }) {
                         currentDevices.add(bleDevice)
                         _devices.value = currentDevices
                         deviceMap[bleDevice.address] = it.device
-                        addLog("✅ 发现设备: ${bleDevice.name} (${bleDevice.address})")
+                        addLog("✅ 发现设备: ${bleDevice.name}")
                     }
                 }
             }
         }
     }
 
-    // ==================== 连接相关 ====================
-
+    // ==================== 连接 ====================
     @SuppressLint("MissingPermission")
     fun connect(address: String) {
-        val device = deviceMap[address]
-        if (device != null) {
-            connect(device)
-        } else {
-            addLog("⚠️ 未找到设备: $address")
-        }
+        deviceMap[address]?.let { connect(it) } ?: addLog("⚠️ 未找到设备: $address")
     }
 
     @SuppressLint("MissingPermission")
     fun connect(device: android.bluetooth.BluetoothDevice) {
         addLog("🔗 正在连接 ${device.name}...")
-        _connectionState.value = "连接中..."
         _isConnected.value = false
         isFullyInitialized = false
         notificationsEnabled = false
         mtuNegotiated = false
-        currentMtuSize = 23
-
-        _deviceInfo.value = DeviceInfo(
-            connectionState = "连接中...",
-            deviceName = device.name ?: "未知",
-            deviceAddress = device.address
-        )
-
         bluetoothGatt = device.connectGatt(context, false, gattCallback)
     }
 
     @SuppressLint("MissingPermission")
     fun disconnect() {
         addLog("🔌 断开连接")
-
-        // 清空命令队列
-        commandQueue.clear()
-        isProcessingCommand = false
-
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null
-        _connectionState.value = "未连接"
         _isConnected.value = false
         isFullyInitialized = false
-        notificationsEnabled = false
-        mtuNegotiated = false
-
-        _deviceInfo.value = DeviceInfo()
-    }
-
-    @SuppressLint("MissingPermission")
-    fun refreshDeviceInfo() {
-        val gatt = bluetoothGatt ?: return
-
-        val services = gatt.services ?: emptyList()
-        var totalCharacteristics = 0
-        var totalDescriptors = 0
-        val characteristics = mutableListOf<CharacteristicInfo>()
-        val cccdStates = mutableMapOf<String, Boolean>()
-
-        services.forEach { service ->
-            service.characteristics?.forEach { char ->
-                totalCharacteristics++
-                totalDescriptors += char.descriptors?.size ?: 0
-
-                val properties = mutableListOf<String>()
-                if (char.properties and BluetoothGattCharacteristic.PROPERTY_READ != 0) properties.add("READ")
-                if (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0) properties.add("WRITE")
-                if (char.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0) properties.add("NOTIFY")
-                if (char.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0) properties.add("INDICATE")
-
-                characteristics.add(
-                    CharacteristicInfo(
-                        uuid = char.uuid.toString(),
-                        properties = properties
-                    )
-                )
-
-                if (char.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0 ||
-                    char.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0) {
-                    val descriptor = char.getDescriptor(BleConstants.CCCD_UUID)
-                    val enabled = descriptor?.value?.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == true
-                    cccdStates[char.uuid.toString()] = enabled
-                }
-            }
-        }
-
-        _deviceInfo.value = _deviceInfo.value.copy(
-            serviceCount = services.size,
-            characteristicCount = totalCharacteristics,
-            descriptorCount = totalDescriptors,
-            characteristics = characteristics,
-            cccdStates = cccdStates
-        )
     }
 
     // ==================== GATT 回调 ====================
-
     private val gattCallback = object : BluetoothGattCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     addLog("✅ 已连接，协商MTU...")
-                    _connectionState.value = "已连接"
-                    _deviceInfo.value = _deviceInfo.value.copy(connectionState = "已连接")
-
-                    handler.postDelayed({
-                        gatt?.requestMtu(512)
-                    }, 300)
+                    handler.postDelayed({ gatt?.requestMtu(512) }, 300)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     addLog("❌ 连接断开")
-                    _connectionState.value = "未连接"
                     _isConnected.value = false
-                    _deviceInfo.value = _deviceInfo.value.copy(connectionState = "未连接")
                     isFullyInitialized = false
-                    notificationsEnabled = false
-                    mtuNegotiated = false
-
-                    // 清空命令队列
-                    commandQueue.clear()
-                    isProcessingCommand = false
                 }
             }
         }
 
         @SuppressLint("MissingPermission")
         override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                currentMtuSize = mtu
-                addLog("✅ MTU协商成功: $mtu 字节 (可用载荷: ${mtu - 3} 字节)")
-                _deviceInfo.value = _deviceInfo.value.copy(mtuSize = mtu)
-                mtuNegotiated = true
-                handler.postDelayed({
-                    gatt?.discoverServices()
-                }, 300)
-            } else {
-                addLog("⚠️ MTU协商失败，使用默认MTU 23字节")
-                currentMtuSize = 23
-                _deviceInfo.value = _deviceInfo.value.copy(mtuSize = 23)
-                mtuNegotiated = true
-                handler.postDelayed({
-                    gatt?.discoverServices()
-                }, 300)
-            }
+            currentMtuSize = if (status == BluetoothGatt.GATT_SUCCESS) mtu else 23
+            mtuNegotiated = true
+            addLog("✅ MTU: $currentMtuSize 字节")
+            handler.postDelayed({ gatt?.discoverServices() }, 300)
         }
 
         @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                addLog("🔍 发现服务，正在初始化...")
+            if (status != BluetoothGatt.GATT_SUCCESS) return
 
-                // Service 1 - 文件上传
-                val service1 = gatt?.getService(BleConstants.SERVICE_1)
-                fileDataCharacteristic = service1?.getCharacteristic(BleConstants.CHAR_FILE_DATA)
-                fileControlCharacteristic = service1?.getCharacteristic(BleConstants.CHAR_FILE_CONTROL)
-                fileNameCharacteristic = service1?.getCharacteristic(BleConstants.CHAR_FILE_NAME)
+            addLog("🔍 发现服务，初始化特征...")
 
-                if (service1 != null) {
-                    addLog("✅ 文件上传服务已找到")
-                }
+            // Service 1 - 文件接收
+            val service1 = gatt?.getService(BleConstants.SERVICE_1)
+            fileDataCharacteristic = service1?.getCharacteristic(BleConstants.CHAR_FILE_DATA)
+            fileControlCharacteristic = service1?.getCharacteristic(BleConstants.CHAR_FILE_CONTROL)
+            fileNameCharacteristic = service1?.getCharacteristic(BleConstants.CHAR_FILE_NAME)
 
-                // Service 2 - 图片传输
-                val service2 = gatt?.getService(BleConstants.SERVICE_2)
-                imageCharacteristic = service2?.getCharacteristic(BleConstants.CHAR_IMAGE_LEN)
-                commandCharacteristic = service2?.getCharacteristic(BleConstants.CHAR_IMAGE_CMD)
-                notificationCharacteristic = service2?.getCharacteristic(BleConstants.CHAR_IMAGE_DATA)
+            Log.d(TAG, "特征初始化状态:")
+            Log.d(TAG, "  1_1 (FILE_DATA): ${fileDataCharacteristic != null}")
+            Log.d(TAG, "  1_2 (FILE_CONTROL): ${fileControlCharacteristic != null}")
+            Log.d(TAG, "  1_3 (FILE_NAME): ${fileNameCharacteristic != null}")
 
-                // Service 3 - 数据通知
-                val service3 = gatt?.getService(BleConstants.SERVICE_3)
-                statusNotificationCharacteristic = service3?.getCharacteristic(BleConstants.CHAR_DATA_NOTIFY)
+            // Service 2 - 照片发送
+            val service2 = gatt?.getService(BleConstants.SERVICE_2)
+            imageLengthCharacteristic = service2?.getCharacteristic(BleConstants.CHAR_IMAGE_LEN)
+            imageCommandCharacteristic = service2?.getCharacteristic(BleConstants.CHAR_IMAGE_CMD)
+            imageDataCharacteristic = service2?.getCharacteristic(BleConstants.CHAR_IMAGE_DATA)
 
-                // 启用图片数据通知
-                if (notificationCharacteristic != null) {
-                    gatt?.setCharacteristicNotification(notificationCharacteristic, true)
-                    val descriptor = notificationCharacteristic?.getDescriptor(BleConstants.CCCD_UUID)
-                    descriptor?.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                    gatt?.writeDescriptor(descriptor)
-                    addLog("🔔 启用图片数据通知 (0203)")
-                } else {
-                    addLog("⚠️ 图片数据通知特征不可用")
-                }
+            // Service 3 - 数据获取和控制
+            val service3 = gatt?.getService(BleConstants.SERVICE_3)
 
-                refreshDeviceInfo()
+            // ✅ 修复：正确初始化两个不同的特征
+            controlCommandCharacteristic = service3?.getCharacteristic(BleConstants.CHAR_DATA_IN)  // 特征3_2 - 控制命令
+            statusNotificationCharacteristic = service3?.getCharacteristic(BleConstants.CHAR_DATA_NOTIFY)  // 特征3_3 - 状态通知
+
+            Log.d(TAG, "  3_2 (CONTROL_CMD): ${controlCommandCharacteristic != null}")
+            Log.d(TAG, "  3_3 (STATUS_NOTIFY): ${statusNotificationCharacteristic != null}")
+
+            // ✅ 启用特征2_3通知（图片数据）
+            imageDataCharacteristic?.let {
+                gatt?.setCharacteristicNotification(it, true)
+                val descriptor = it.getDescriptor(BleConstants.CCCD_UUID)
+                descriptor?.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                gatt?.writeDescriptor(descriptor)
+                addLog("🔔 启用特征2_3通知")
             }
         }
 
         @SuppressLint("MissingPermission")
-        override fun onDescriptorWrite(
-            gatt: BluetoothGatt?,
-            descriptor: BluetoothGattDescriptor?,
-            status: Int
-        ) {
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                addLog("✅ 描述符写入成功")
+        override fun onDescriptorWrite(gatt: BluetoothGatt?, descriptor: BluetoothGattDescriptor?, status: Int) {
+            if (status != BluetoothGatt.GATT_SUCCESS) return
 
-                if (!notificationsEnabled && statusNotificationCharacteristic != null) {
-                    gatt?.setCharacteristicNotification(statusNotificationCharacteristic, true)
-                    val descriptor = statusNotificationCharacteristic?.getDescriptor(BleConstants.CCCD_UUID)
-                    descriptor?.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                    gatt?.writeDescriptor(descriptor)
-                    addLog("🔔 启用状态通知 (0303)")
-                    notificationsEnabled = true
-                } else {
-                    isFullyInitialized = true
-                    _isConnected.value = true
-                    addLog("🎉 初始化完成，可以开始传输")
-                    refreshDeviceInfo()
+            // ✅ 启用特征3_3通知（状态消息）
+            if (!notificationsEnabled) {
+                statusNotificationCharacteristic?.let {
+                    gatt?.setCharacteristicNotification(it, true)
+                    val desc = it.getDescriptor(BleConstants.CCCD_UUID)
+                    desc?.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    gatt?.writeDescriptor(desc)
+                    addLog("🔔 启用特征3_3通知")
                 }
+                notificationsEnabled = true
             } else {
-                addLog("⚠️ 描述符写入失败: $status")
+                isFullyInitialized = true
+                _isConnected.value = true
+                addLog("🎉 初始化完成！")
             }
         }
 
-        /**
-         * 🆕 特征写入回调 - 处理所有写入操作的结果
-         */
         @SuppressLint("MissingPermission")
-        override fun onCharacteristicWrite(
-            gatt: BluetoothGatt?,
-            characteristic: BluetoothGattCharacteristic?,
-            status: Int
-        ) {
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                addLog("✅ 特征写入成功: ${characteristic?.uuid}")
-                writeCallback?.onWriteSuccess()
-            } else {
-                addLog("❌ 特征写入失败: ${characteristic?.uuid}, status: $status")
-                writeCallback?.onWriteFailure("GATT错误码: $status")
-            }
-        }
+        override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
+            if (status != BluetoothGatt.GATT_SUCCESS) return
 
-        override fun onCharacteristicRead(
-            gatt: BluetoothGatt?,
-            characteristic: BluetoothGattCharacteristic?,
-            status: Int
-        ) {
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                characteristic?.value?.let { data ->
-                    if (characteristic.uuid == BleConstants.CHAR_IMAGE_LEN) {
-                        expectedImageSize = byteArrayToInt(data)
-                        addLog("📦 图片大小: $expectedImageSize 字节")
-                        _transferProgress.value = "准备接收 $expectedImageSize 字节"
+            characteristic?.value?.let { data ->
+                // ✅ 读取特征2_1 - 图片长度
+                if (characteristic.uuid == BleConstants.CHAR_IMAGE_LEN) {
+                    expectedImageSize = byteArrayToInt(data)
+                    addLog("📦 图片长度 = $expectedImageSize 字节")
+                    _transferProgress.value = "准备接收 $expectedImageSize 字节"
 
-                        imageBuffer.clear()
-                        currentChunkBuffer.clear()
+                    if (expectedImageSize > 0) {
+                        imageBuffer = ByteArray(expectedImageSize)
+                        currentImageOffset = 0
                         isReceivingImage = true
-                        lastDataReceivedTime = System.currentTimeMillis()
+                        addLog("✅ 缓冲区已初始化")
 
-                        // 增加延迟，让ESP32有时间准备
-                        handler.postDelayed({
-                            requestImageData()
-                        }, 150)
+                        // ✅ 自动发送第一个 getimage
+                        handler.postDelayed({ sendImageCommand("getimage") }, 100)
                     }
                 }
             }
         }
 
         @SuppressLint("MissingPermission")
-        override fun onCharacteristicChanged(
-            gatt: BluetoothGatt?,
-            characteristic: BluetoothGattCharacteristic?
-        ) {
+        override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
             characteristic?.value?.let { data ->
                 when (characteristic.uuid) {
+                    // ✅ 特征2_3 - 图片数据块（自动推送）
                     BleConstants.CHAR_IMAGE_DATA -> {
-                        if (expectedImageSize > 0 && imageBuffer.size < expectedImageSize) {
-                            currentChunkBuffer.addAll(data.toList())
-                            lastDataReceivedTime = System.currentTimeMillis()
+                        if (isReceivingImage && currentImageOffset < expectedImageSize) {
+                            val copySize = Math.min(data.size, expectedImageSize - currentImageOffset)
+                            System.arraycopy(data, 0, imageBuffer, currentImageOffset, copySize)
+                            currentImageOffset += copySize
 
-                            // 增加延迟，确保数据块完整接收
-                            handler.removeCallbacks(chunkCompleteChecker)
-                            handler.postDelayed(chunkCompleteChecker, 80)
+                            val progress = (currentImageOffset * 100 / expectedImageSize)
+                            _transferProgress.value = "接收中... $progress%"
+                            addLog("📥 接收数据块: $copySize 字节, 进度: ${currentImageOffset}/${expectedImageSize}")
+
+                            // ✅ 检查是否接收完成
+                            if (currentImageOffset >= expectedImageSize) {
+                                addLog("✅ 接收完成，停止发送 getimage")
+                                onImageReceiveComplete()
+                            } else {
+                                // ✅ 自动发送下一个 getimage（确保还需要接收）
+                                handler.postDelayed({
+                                    if (isReceivingImage && currentImageOffset < expectedImageSize) {
+                                        sendImageCommand("getimage")
+                                    }
+                                }, 80)
+                            }
                         } else {
 
                         }
                     }
+
+                    // ✅ 特征3_3 - 状态通知
                     BleConstants.CHAR_DATA_NOTIFY -> {
-                        val message = String(data, Charsets.UTF_8)
-                        addLog("📢 收到通知: $message")
+                        val message = String(data, Charsets.UTF_8).trim()
+                        addLog("📢 收到通知: '$message'")
 
                         when (message) {
                             "image_ready" -> {
-                                addLog("🎉 图片已准备就绪，开始读取...")
-                                handler.postDelayed({
-                                    // 直接读取长度，不再发送 takeimage
-                                    imageCharacteristic?.let {
-                                        bluetoothGatt?.readCharacteristic(it)
-                                        addLog("📖 读取图片长度...")
-                                    }
-                                }, 100)
+                                // ✅ 只有第一次收到 image_ready 时才读取长度
+                                if (isWaitingForImageReady) {
+                                    isWaitingForImageReady = false
+                                    addLog("🎉 Step 2️⃣: ESP32已准备图片")
+                                    handler.postDelayed({
+                                        imageLengthCharacteristic?.let {
+                                            addLog("📖 Step 3️⃣: 读取图片长度特征...")
+                                            gatt?.readCharacteristic(it)
+                                        }
+                                    }, 200)
+                                } else {
+                                    addLog("⚠️ 忽略额外的 image_ready（已在接收中）")
+                                }
                             }
                             "image_end" -> {
-                                addLog("💾 传输完成信号")
-                            }
-                            "ai_work" -> {
-                                addLog("🤖 收到AI处理命令")
-                                _receivedCommand.value = "ai_work"
-
-                                handler.postDelayed({
-                                    readImageLength()
-                                }, 200)
-                            }
-                            else -> {
-                                if (message.isNotEmpty()) {
-                                    addLog("📨 收到命令: $message")
-                                    _receivedCommand.value = message
+                                addLog("📢 ESP32 通知图片发送完成")
+                                if (isReceivingImage) {
+                                    onImageReceiveComplete()
                                 } else {
 
                                 }
                             }
+                            "image_empty" -> {
+                                addLog("⚠️ 没有图像数据")
+                                isReceivingImage = false
+                            }
+                            "image_error" -> {
+                                addLog("❌ ESP32错误")
+                                isReceivingImage = false
+                            }
+                            // ✅ 新增：处理 ai_work 命令
+                            "ai_work" -> {
+                                addLog("🤖 收到 AI 工作命令，准备启动 AI 处理...")
+                                _aiWorkCommand.value = true
+                                // 重置为 false，准备下次触发
+                                handler.postDelayed({
+                                    _aiWorkCommand.value = false
+                                }, 100)
+                            }
+                            else -> {
+                                // 其他通知消息
+                            }
                         }
                     }
+
                     else -> {}
                 }
             }
         }
     }
 
-    // ==================== 图片传输相关 ====================
+    // ==================== 图片处理 ====================
+    private fun onImageReceiveComplete() {
+        if (!isReceivingImage) return
 
-    private val chunkCompleteChecker = Runnable {
-        if (currentChunkBuffer.isNotEmpty()) {
-            imageBuffer.addAll(currentChunkBuffer)
-            val chunkSize = currentChunkBuffer.size
-            currentChunkBuffer.clear()
+        addLog("💾 图片接收完成！")
 
-            val progress = (imageBuffer.size * 100 / expectedImageSize)
-            _transferProgress.value = "接收中 $progress% (${imageBuffer.size}/$expectedImageSize)"
+        // ✅ 验证JPEG
+        val isValid = imageBuffer.size >= 4 &&
+                imageBuffer[0] == 0xFF.toByte() &&
+                imageBuffer[1] == 0xD8.toByte() &&
+                imageBuffer[imageBuffer.size - 2] == 0xFF.toByte() &&
+                imageBuffer[imageBuffer.size - 1] == 0xD9.toByte()
 
-            // 每隔5%才打印日志，减少日志开销
-            if (progress % 5 == 0 || imageBuffer.size >= expectedImageSize) {
-                addLog("接收进度: $progress% (${imageBuffer.size}/$expectedImageSize)")
-            }
+        addLog(if (isValid) "✅ JPEG格式正确" else "⚠️ JPEG格式可能有问题")
 
-            if (imageBuffer.size >= expectedImageSize) {
-                addLog("✅ 图片接收完成")
-                _receivedImage.value = imageBuffer.toByteArray()
-                isReceivingImage = false
-                _transferProgress.value = ""
-            } else {
-                // 增加延迟，给ESP32更多时间准备数据
-                handler.postDelayed({
-                    requestImageData()
-                }, 100)
-            }
-        }
+        _receivedImage.value = imageBuffer.copyOf()
+        isReceivingImage = false
+        _transferProgress.value = "✅ 完成！"
+        addLog("🎉 可以显示图片了！")
     }
 
-    // 命令队列，避免连续发送导致冲突
-    private val commandQueue = mutableListOf<String>()
-    private var isProcessingCommand = false
-
-    @SuppressLint("MissingPermission")
-    fun sendCommand(command: String) {
-        if (!isFullyInitialized) {
-            addLog("⚠️ 设备未完全初始化，请等待...")
-            return
-        }
-
-        // 将命令加入队列
-        commandQueue.add(command)
-
-        // 如果没有正在处理的命令，开始处理
-        if (!isProcessingCommand) {
-            processNextCommand()
-        }
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun processNextCommand() {
-        if (commandQueue.isEmpty()) {
-            isProcessingCommand = false
-            return
-        }
-
-        isProcessingCommand = true
-        val command = commandQueue.removeAt(0)
-
-        commandCharacteristic?.let { char ->
-            char.value = command.toByteArray()
-
-            // 设置临时回调处理命令发送
-            val originalCallback = writeCallback
-            setWriteCallback(object : WriteCallback {
-                override fun onWriteSuccess() {
-                    addLog("✅ 命令发送成功: $command")
-                    // 恢复原回调
-                    setWriteCallback(originalCallback)
-                    // 延迟后处理下一个命令
-                    handler.postDelayed({
-                        processNextCommand()
-                    }, 50)
-                }
-
-                override fun onWriteFailure(error: String) {
-                    addLog("❌ 命令发送失败: $command - $error")
-                    // 恢复原回调
-                    setWriteCallback(originalCallback)
-                    // 失败后也要继续处理队列
-                    handler.postDelayed({
-                        processNextCommand()
-                    }, 100)
-                }
-            })
-
-            val result = bluetoothGatt?.writeCharacteristic(char)
-            if (!result!!) {
-                addLog("⚠️ 命令写入请求失败: $command")
-                setWriteCallback(originalCallback)
-                isProcessingCommand = false
-            } else {
-                addLog("📤 发送命令: $command")
-            }
-        } ?: run {
-            addLog("⚠️ 命令特征不可用")
-            isProcessingCommand = false
-        }
-    }
-
+    /**
+     * ✅ 用户点击按钮 - 启动图片接收
+     * 这是Android端主动请求图片的入口
+     */
     @SuppressLint("MissingPermission")
     fun readImageLength() {
         if (!isFullyInitialized) {
-            addLog("⚠️ 设备未完全初始化，请等待...")
+            addLog("⚠️ 设备未初始化")
             return
         }
 
-        // 先发送 takeimage 命令
-        sendCommand("takeimage")
+        // ✅ 防止在接收过程中重复请求
+        if (isReceivingImage) {
+            addLog("⚠️ 正在接收图片中，请稍候...")
+            return
+        }
 
-        // 等待命令处理完成后再读取长度
-        handler.postDelayed({
-            imageCharacteristic?.let {
-                bluetoothGatt?.readCharacteristic(it)
-                addLog("📖 读取图片长度...")
-            }
-        }, 200)  // 增加延迟，确保 ESP32 处理完 takeimage
+        addLog("📸 Step 1️⃣: 发送 takeimage 命令...")
+        _transferProgress.value = "发送 takeimage 命令..."
+
+        // ✅ 设置标志，表示正在等待 image_ready
+        isWaitingForImageReady = true
+
+        sendImageCommand("takeimage")
     }
-
-    @SuppressLint("MissingPermission")
-    private fun requestImageData() {
-        sendCommand("getimage")
-    }
-
-    // ==================== 文件上传相关 ====================
 
     /**
-     * 设置写入回调
+     * ✅ 发送图片命令 - 只发送纯命令，不处理响应
      */
-    fun setWriteCallback(callback: WriteCallback?) {
-        writeCallback = callback
+    @SuppressLint("MissingPermission")
+    private fun sendImageCommand(command: String) {
+        if (!isFullyInitialized) {
+            addLog("⚠️ 设备未初始化")
+            return
+        }
+
+        imageCommandCharacteristic?.let { char ->
+            char.value = command.toByteArray(Charsets.UTF_8)
+            val result = bluetoothGatt?.writeCharacteristic(char)
+            if (result == true) {
+                Log.d(TAG, "📤 发送图片命令: $command")
+            } else {
+                addLog("⚠️ 图片命令发送失败: $command")
+            }
+        } ?: run {
+            addLog("⚠️ 图片命令特征不可用")
+        }
     }
 
+    // ==================== JSON发送 ====================
+
     /**
-     * 发送文件数据
-     * 写入到 Service 1 的数据特征 (0x0101)
+     * ✅ 新增：发送JSON结果到ESP32
+     * 使用 Service 1 的文件传输特征来发送JSON
+     */
+    @SuppressLint("MissingPermission")
+    fun sendJsonResult(jsonContent: String) {
+        if (!isFullyInitialized) {
+            addLog("⚠️ 设备未初始化，无法发送JSON")
+            return
+        }
+
+        if (!_isConnected.value) {
+            addLog("❌ BLE未连接，无法发送JSON")
+            return
+        }
+
+        if (bluetoothGatt == null) {
+            addLog("❌ bluetoothGatt为null，无法发送JSON")
+            return
+        }
+
+        // 在后台线程中执行，避免阻塞UI
+        kotlin.concurrent.thread {
+            try {
+                Log.d(TAG, "📤 开始发送JSON到ESP32...")
+                addLog("📤 开始发送JSON到ESP32...")
+
+                val jsonBytes = jsonContent.toByteArray(Charsets.UTF_8)
+                Log.d(TAG, "📋 JSON大小: ${jsonBytes.size} 字节")
+                addLog("📋 JSON大小: ${jsonBytes.size} 字节")
+
+                // ========== Step 1: 发送文件名 ==========
+                val jsonFileName = "result_${System.currentTimeMillis()}.json"
+                Log.d(TAG, "Step 1️⃣: 发送JSON文件名: $jsonFileName")
+                addLog("Step 1️⃣: 发送JSON文件名")
+
+                fileNameCharacteristic?.let { char ->
+                    char.value = jsonFileName.toByteArray(Charsets.UTF_8)
+                    bluetoothGatt?.writeCharacteristic(char)
+                    Thread.sleep(200)
+                } ?: run {
+                    addLog("⚠️ 文件名特征不可用")
+                    return@thread
+                }
+
+                // ========== Step 2: 发送 start 命令 ==========
+                Log.d(TAG, "Step 2️⃣: 发送 start 命令")
+                addLog("Step 2️⃣: 发送 start 命令")
+
+                fileControlCharacteristic?.let { char ->
+                    char.value = "start".toByteArray(Charsets.UTF_8)
+                    bluetoothGatt?.writeCharacteristic(char)
+                    Thread.sleep(200)
+                } ?: run {
+                    addLog("⚠️ 控制特征不可用")
+                    return@thread
+                }
+
+                // ========== Step 3: 分块发送JSON数据 ==========
+                Log.d(TAG, "Step 3️⃣: 分块发送JSON数据")
+                addLog("Step 3️⃣: 分块发送JSON数据")
+
+                val chunkSize = 400  // BLE MTU通常是512，减去20字节的包头，留保证书
+                var sentBytes = 0
+                var chunkCount = 0
+
+                fileDataCharacteristic?.let { char ->
+                    while (sentBytes < jsonBytes.size) {
+                        if (!_isConnected.value) {
+                            addLog("❌ BLE连接已断开")
+                            return@thread
+                        }
+
+                        val currentChunkSize = Math.min(chunkSize, jsonBytes.size - sentBytes)
+                        val chunk = jsonBytes.sliceArray(sentBytes until sentBytes + currentChunkSize)
+
+                        char.value = chunk
+                        val result = bluetoothGatt?.writeCharacteristic(char)
+
+                        if (result == true) {
+                            sentBytes += currentChunkSize
+                            chunkCount++
+                            Log.d(TAG, "📤 数据块 $chunkCount: $currentChunkSize 字节 (总计: $sentBytes / ${jsonBytes.size})")
+                            addLog("📤 数据块 $chunkCount: $currentChunkSize 字节")
+                        } else {
+                            addLog("⚠️ 数据块 $chunkCount 发送失败")
+                            return@thread
+                        }
+
+                        Thread.sleep(80)  // 等待一下，避免发送过快
+                    }
+                } ?: run {
+                    addLog("⚠️ 数据特征不可用")
+                    return@thread
+                }
+
+                Log.d(TAG, "✅ 全部 $chunkCount 个数据块已发送")
+                addLog("✅ 全部 $chunkCount 个数据块已发送")
+
+                // ========== Step 4: 发送 end 命令 ==========
+                Log.d(TAG, "Step 4️⃣: 发送 end 命令")
+                addLog("Step 4️⃣: 发送 end 命令")
+
+                Thread.sleep(200)
+
+                fileControlCharacteristic?.let { char ->
+                    char.value = "end".toByteArray(Charsets.UTF_8)
+                    bluetoothGatt?.writeCharacteristic(char)
+                    Thread.sleep(300)
+                }
+
+                Log.d(TAG, "🎉 JSON发送完成！")
+                addLog("🎉 JSON发送完成！")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ 发送JSON异常: ${e.message}", e)
+                addLog("❌ 发送JSON异常: ${e.message}")
+            }
+        }
+    }
+
+    // ==================== 文件发送 ====================
+
+    /**
+     * ✅ 修复：发送文件数据到特征1_1
+     * 添加连接检查和详细日志
      */
     @SuppressLint("MissingPermission")
     fun sendFileData(data: ByteArray): Boolean {
-        if (!isFullyInitialized) {
-            addLog("⚠️ 设备未完全初始化")
+        if (!_isConnected.value) {
+            Log.e(TAG, "❌ BLE未连接，无法发送文件数据")
             return false
         }
 
-        fileDataCharacteristic?.let { char ->
-            char.value = data
-            val result = bluetoothGatt?.writeCharacteristic(char) ?: false
-            if (result) {
-                addLog("📤 发送数据: ${data.size} 字节")
-            }
-            return result
+        if (fileDataCharacteristic == null) {
+            Log.e(TAG, "❌ 文件数据特征(1_1)未初始化")
+            return false
         }
-        return false
+
+        return fileDataCharacteristic?.let {
+            it.value = data
+            val result = bluetoothGatt?.writeCharacteristic(it) == true
+            if (result) {
+                Log.d(TAG, "✅ 文件数据已写入特征1_1: ${data.size} 字节")
+            } else {
+                Log.e(TAG, "❌ 文件数据写入失败: ${data.size} 字节")
+            }
+            result
+        } ?: false
     }
 
     /**
-     * 发送文件控制命令
-     * 写入到 Service 1 的控制特征 (0x0102)
-     * 命令: "start", "update", "end"
+     * ✅ 发送文件控制命令到特征1_2
      */
     @SuppressLint("MissingPermission")
     fun sendFileControl(command: String): Boolean {
-        if (!isFullyInitialized) {
-            addLog("⚠️ 设备未完全初始化")
+        if (!_isConnected.value) {
+            Log.e(TAG, "❌ BLE未连接，无法发送控制命令: $command")
             return false
         }
 
-        fileControlCharacteristic?.let { char ->
-            char.value = command.toByteArray()
-            val result = bluetoothGatt?.writeCharacteristic(char) ?: false
-            if (result) {
-                addLog("📤 文件控制: $command")
-            }
-            return result
+        if (fileControlCharacteristic == null) {
+            Log.e(TAG, "❌ 文件控制特征(1_2)未初始化")
+            return false
         }
-        return false
+
+        return fileControlCharacteristic?.let {
+            it.value = command.toByteArray(Charsets.UTF_8)
+            val result = bluetoothGatt?.writeCharacteristic(it) == true
+            if (result) {
+                Log.d(TAG, "✅ 文件控制命令已写入特征1_2: $command")
+            } else {
+                Log.e(TAG, "❌ 文件控制命令写入失败: $command")
+            }
+            result
+        } ?: false
     }
 
     /**
-     * 发送文件名
-     * 写入到 Service 1 的文件名特征 (0x0103)
+     * ✅ 发送文件名到特征1_3
      */
     @SuppressLint("MissingPermission")
     fun sendFileName(fileName: String): Boolean {
-        if (!isFullyInitialized) {
-            addLog("⚠️ 设备未完全初始化")
+        if (!_isConnected.value) {
+            Log.e(TAG, "❌ BLE未连接，无法发送文件名: $fileName")
             return false
         }
 
-        fileNameCharacteristic?.let { char ->
-            char.value = fileName.toByteArray()
-            val result = bluetoothGatt?.writeCharacteristic(char) ?: false
-            if (result) {
-                addLog("📤 文件名: $fileName")
-            }
-            return result
+        if (fileNameCharacteristic == null) {
+            Log.e(TAG, "❌ 文件名特征(1_3)未初始化")
+            return false
         }
-        return false
+
+        return fileNameCharacteristic?.let {
+            it.value = fileName.toByteArray(Charsets.UTF_8)
+            val result = bluetoothGatt?.writeCharacteristic(it) == true
+            if (result) {
+                Log.d(TAG, "✅ 文件名已写入特征1_3: $fileName")
+            } else {
+                Log.e(TAG, "❌ 文件名写入失败: $fileName")
+            }
+            result
+        } ?: false
     }
 
-    // ==================== 状态检查 ====================
+    /**
+     * ✅ 修复：发送控制命令到特征3_2
+     *
+     * 关键改动：使用 controlCommandCharacteristic（特征3_2）
+     * 而不是 statusNotificationCharacteristic（特征3_3）
+     *
+     * 特征3_2 - 接收控制命令（write）
+     * 特征3_3 - 发送状态通知（notify）
+     */
+    @SuppressLint("MissingPermission")
+    fun sendControlCommand(command: String): Boolean {
+        if (!_isConnected.value) {
+            Log.e(TAG, "❌ BLE未连接，无法发送控制命令: $command")
+            return false
+        }
 
-    fun isImageReadyForTransfer(): Boolean {
-        return isFullyInitialized && commandCharacteristic != null
+        if (controlCommandCharacteristic == null) {
+            Log.e(TAG, "❌ 控制命令特征(3_2)未初始化")
+            return false
+        }
+
+        return controlCommandCharacteristic?.let {
+            it.value = command.toByteArray(Charsets.UTF_8)
+            val result = bluetoothGatt?.writeCharacteristic(it) == true
+            if (result) {
+                Log.d(TAG, "✅ 控制命令已写入特征3_2: $command")
+            } else {
+                Log.e(TAG, "❌ 控制命令写入失败: $command")
+            }
+            result
+        } ?: false
     }
 
-    fun isFileUploadReady(): Boolean {
-        return isFullyInitialized &&
-                fileDataCharacteristic != null &&
-                fileControlCharacteristic != null &&
-                fileNameCharacteristic != null
-    }
-
-    // ==================== 工具方法 ====================
-
+    // ==================== 工具 ====================
     private fun byteArrayToInt(bytes: ByteArray): Int {
         return if (bytes.size >= 4) {
             (bytes[0].toInt() and 0xFF) or
@@ -690,9 +661,5 @@ class BleManager(private val context: Context) {
                     ((bytes[2].toInt() and 0xFF) shl 16) or
                     ((bytes[3].toInt() and 0xFF) shl 24)
         } else 0
-    }
-
-    fun clearReceivedCommand() {
-        _receivedCommand.value = null
     }
 }

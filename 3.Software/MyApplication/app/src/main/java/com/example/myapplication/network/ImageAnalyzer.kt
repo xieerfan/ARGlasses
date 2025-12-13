@@ -15,7 +15,7 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 import com.example.myapplication.config.ConfigManager
 
-/**
+/*
  * 图片AI分析器 - 使用ChatAnywhere API的Gemini模型
  *
  * ✅ 修复点：

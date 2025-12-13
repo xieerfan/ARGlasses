@@ -38,6 +38,7 @@ import com.example.myapplication.ImageSplitter
 
 /**
  * ✅ 修复：添加科目选择状态，BLE回调时使用UI选择的科目
+ * ✅ 新增：JSON显示逻辑，AI生成JSON后只发送一次显示
  */
 class AiProcessActivity : ComponentActivity() {
 
@@ -83,6 +84,9 @@ class AiProcessActivity : ComponentActivity() {
     // ✅ 新增：保存UI上选择的科目，BLE回调时使用这个值
     private val _selectedSubject = MutableStateFlow("physics")
     val selectedSubject: StateFlow<String> = _selectedSubject
+
+    // ✅ 新增：标记是否已显示过JSON，确保只显示一次
+    private var jsonDisplayed = false
 
     private var processingJob: Job? = null
 
@@ -156,6 +160,8 @@ class AiProcessActivity : ComponentActivity() {
                         onStartProcess = { subject ->
                             // ✅ 更新选择的科目
                             _selectedSubject.value = subject
+                            // ✅ 重置JSON显示标志，准备显示新的JSON
+                            jsonDisplayed = false
                             startProcessing(subject)
                         },
                         onDeleteAll = { deleteAllImages() },
@@ -447,9 +453,21 @@ class AiProcessActivity : ComponentActivity() {
                     addProgressLog("$title: $message")
                 }
 
-                // ✅ 新增：设置JSON发送回调
+                // ✅ 修改：重置JSON显示标志，准备显示第一个生成的JSON
+                jsonDisplayed = false
+
+                // ✅ 修改：设置JSON发送回调 - 只显示第一个生成的JSON
                 processingManager.setJsonSendCallback { jsonFile ->
-                    sendJsonToEsp32(jsonFile)
+                    // ✅ 关键：只显示第一个JSON，之后生成的JSON不再显示
+                    if (!jsonDisplayed) {
+                        Log.d(TAG, "📊 第一个JSON已生成，将显示此JSON")
+                        addProgressLog("📊 第一个JSON已生成，准备显示...")
+                        sendJsonForDisplayOnce(jsonFile)
+                        jsonDisplayed = true  // ✅ 标记已显示，后续不再显示
+                    } else {
+                        Log.d(TAG, "📊 后续JSON已生成，不再显示（仅显示第一个）")
+                        addProgressLog("📊 后续JSON已生成（仅显示第一个）")
+                    }
                 }
 
                 val result = processingManager.processAllImages(
@@ -490,21 +508,29 @@ class AiProcessActivity : ComponentActivity() {
     }
 
     /**
-     * ✅ 新增：发送JSON结果到ESP32
+     * ✅ 新增：发送JSON到ESP32并显示（只发送一次）
+     *
+     * 流程：
+     * 1. 发送文件名 /an/xxx.json 到特征1_3
+     * 2. 发送start到特征1_2
+     * 3. 分块发送JSON内容到特征1_1
+     * 4. 发送end到特征1_2
+     * 5. 发送display_json命令到特征3_2
      */
-    private fun sendJsonToEsp32(jsonFile: File) {
+    private fun sendJsonForDisplayOnce(jsonFile: File) {
         try {
-            Log.d(TAG, "📤 开始发送JSON到ESP32: ${jsonFile.name}")
+            Log.d(TAG, "📤 开始发送JSON到ESP32显示: ${jsonFile.name}")
+            addProgressLog("📤 正在发送JSON到设备显示...")
 
             // 读取JSON内容
             val jsonContent = jsonFile.readText(Charsets.UTF_8)
-            Log.d(TAG, "📋 JSON内容: $jsonContent")
+            Log.d(TAG, "📋 JSON内容长度: ${jsonContent.length} 字符")
 
-            // 通过BLE发送JSON
-            MainActivity.bleManager.sendJsonResult(jsonContent)
+            // ✅ 使用新方法发送JSON并显示
+            MainActivity.bleManager.sendJsonForDisplay(jsonContent)
 
             Log.d(TAG, "✅ JSON已发送到ESP32")
-            addProgressLog("📤 JSON结果已发送到设备")
+            addProgressLog("📤 JSON结果已发送到设备并显示")
 
         } catch (e: Exception) {
             Log.e(TAG, "❌ 发送JSON异常: ${e.message}", e)

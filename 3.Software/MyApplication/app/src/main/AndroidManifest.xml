@@ -2,8 +2,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ✅ 前台服务权限 -->
+    <!-- ==================== 核心权限 ==================== -->
+
+    <!-- ✅ 前台服务权限 - 后台处理必需 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- ✅ 前台服务类型 - 处理图片和数据 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- ✅ WakeLock权限 - 防止CPU休眠 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- ✅ Android 13+通知权限 - 发送通知必需 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- 蓝牙权限 -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
@@ -13,18 +24,34 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <!-- 文件读取权限 -->
+    <!-- 文件权限 -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
-    <!-- 🆕 相机权限 -->
+    <!-- 相机权限 -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- 网络权限 -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
-    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- 后台权限 - 用户需要在系统设置中授予 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- 定时任务权限（可选） -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <uses-feature
+        android:name="android.hardware.bluetooth_le"
+        android:required="true" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -38,6 +65,8 @@
         android:theme="@style/Theme.MyApplication"
         tools:targetApi="31"
         android:requestLegacyExternalStorage="true">
+
+        <!-- ==================== Activities ==================== -->
 
         <activity
             android:name=".MainActivity"
@@ -60,17 +89,17 @@
             android:exported="false"
             android:label="设备信息" />
 
-        <!-- 音乐上传Activity -->
         <activity
             android:name=".MusicUploadActivity"
             android:exported="false"
             android:label="音乐上传" />
 
-        <!-- 小说上传Activity -->
         <activity
             android:name=".NovelUploadActivity"
             android:exported="false"
             android:label="小说上传" />
+
+        <!-- ==================== Providers ==================== -->
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -82,10 +111,14 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- ==================== Services ==================== -->
+
+        <!-- ✅ 命令轮询服务 -->
         <service
             android:name=".CommandPollingService"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
     </application>
 

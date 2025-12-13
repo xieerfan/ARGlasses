@@ -394,7 +394,7 @@ class BleManager(private val context: Context) {
      * ✅ 发送图片命令 - 只发送纯命令，不处理响应
      */
     @SuppressLint("MissingPermission")
-    private fun sendImageCommand(command: String) {
+    fun sendImageCommand(command: String) {
         if (!isFullyInitialized) {
             addLog("⚠️ 设备未初始化")
             return
@@ -416,7 +416,153 @@ class BleManager(private val context: Context) {
     // ==================== JSON发送 ====================
 
     /**
-     * ✅ 新增：发送JSON结果到ESP32
+     * ✅ 新增：发送JSON并显示（用于AI生成的JSON）
+     *
+     * 完整流程：
+     * 1. 发送文件名 /an/xxx.json 到特征1_3
+     * 2. 发送start到特征1_2
+     * 3. 分块发送JSON内容到特征1_1
+     * 4. 发送end到特征1_2
+     * 5. 发送display_json命令到特征3_2
+     */
+    @SuppressLint("MissingPermission")
+    fun sendJsonForDisplay(jsonContent: String) {
+        if (!isFullyInitialized) {
+            addLog("⚠️ 设备未初始化，无法发送JSON")
+            return
+        }
+
+        if (!_isConnected.value) {
+            addLog("❌ BLE未连接，无法发送JSON")
+            return
+        }
+
+        if (bluetoothGatt == null) {
+            addLog("❌ bluetoothGatt为null，无法发送JSON")
+            return
+        }
+
+        // 在后台线程中执行，避免阻塞UI
+        kotlin.concurrent.thread {
+            try {
+                Log.d(TAG, "📤 开始发送JSON到ESP32并显示...")
+                addLog("📤 开始发送JSON到ESP32...")
+
+                val jsonBytes = jsonContent.toByteArray(Charsets.UTF_8)
+                Log.d(TAG, "📋 JSON大小: ${jsonBytes.size} 字节")
+                addLog("📋 JSON大小: ${jsonBytes.size} 字节")
+
+                // ========== Step 1: 发送文件名 /an/xxx.json ==========
+                val jsonFileName = "/an/result_${System.currentTimeMillis()}.json"
+                Log.d(TAG, "Step 1️⃣: 发送JSON文件名: $jsonFileName")
+                addLog("Step 1️⃣: 发送文件名 $jsonFileName")
+
+                fileNameCharacteristic?.let { char ->
+                    char.value = jsonFileName.toByteArray(Charsets.UTF_8)
+                    bluetoothGatt?.writeCharacteristic(char)
+                    Thread.sleep(200)
+                } ?: run {
+                    addLog("⚠️ 文件名特征不可用")
+                    return@thread
+                }
+
+                // ========== Step 2: 发送 start 命令 ==========
+                Log.d(TAG, "Step 2️⃣: 发送 start 命令")
+                addLog("Step 2️⃣: 发送 start 命令")
+
+                fileControlCharacteristic?.let { char ->
+                    char.value = "start".toByteArray(Charsets.UTF_8)
+                    bluetoothGatt?.writeCharacteristic(char)
+                    Thread.sleep(200)
+                } ?: run {
+                    addLog("⚠️ 控制特征不可用")
+                    return@thread
+                }
+
+                // ========== Step 3: 分块发送JSON数据 ==========
+                Log.d(TAG, "Step 3️⃣: 分块发送JSON数据")
+                addLog("Step 3️⃣: 分块发送JSON数据")
+
+                val chunkSize = 400
+                var sentBytes = 0
+                var chunkCount = 0
+
+                fileDataCharacteristic?.let { char ->
+                    while (sentBytes < jsonBytes.size) {
+                        if (!_isConnected.value) {
+                            addLog("❌ BLE连接已断开")
+                            return@thread
+                        }
+
+                        val currentChunkSize = Math.min(chunkSize, jsonBytes.size - sentBytes)
+                        val chunk = jsonBytes.sliceArray(sentBytes until sentBytes + currentChunkSize)
+
+                        char.value = chunk
+                        val result = bluetoothGatt?.writeCharacteristic(char)
+
+                        if (result == true) {
+                            sentBytes += currentChunkSize
+                            chunkCount++
+                            Log.d(TAG, "📤 数据块 $chunkCount: $currentChunkSize 字节 (总计: $sentBytes / ${jsonBytes.size})")
+                        } else {
+                            addLog("⚠️ 数据块 $chunkCount 发送失败")
+                            return@thread
+                        }
+
+                        Thread.sleep(80)
+                    }
+                } ?: run {
+                    addLog("⚠️ 数据特征不可用")
+                    return@thread
+                }
+
+                Log.d(TAG, "✅ 全部 $chunkCount 个数据块已发送")
+                addLog("✅ 已发送 $chunkCount 个数据块")
+
+                // ========== Step 4: 发送 end 命令 ==========
+                Log.d(TAG, "Step 4️⃣: 发送 end 命令")
+                addLog("Step 4️⃣: 发送 end 命令")
+
+                Thread.sleep(200)
+
+                fileControlCharacteristic?.let { char ->
+                    char.value = "end".toByteArray(Charsets.UTF_8)
+                    bluetoothGatt?.writeCharacteristic(char)
+                    Thread.sleep(300)
+                }
+
+                Log.d(TAG, "✅ end 命令已发送")
+
+                // ========== Step 5: 发送 display_json 命令到特征3_2 ==========
+                Log.d(TAG, "Step 5️⃣: 发送 display_json 命令")
+                addLog("Step 5️⃣: 发送 display_json 命令")
+
+                Thread.sleep(200)
+
+                controlCommandCharacteristic?.let { char ->
+                    char.value = "display_json".toByteArray(Charsets.UTF_8)
+                    val result = bluetoothGatt?.writeCharacteristic(char)
+                    if (result == true) {
+                        Log.d(TAG, "✅ display_json 命令已发送")
+                        addLog("✅ display_json 命令已发送")
+                    } else {
+                        Log.e(TAG, "❌ display_json 命令发送失败")
+                        addLog("⚠️ display_json 命令发送失败")
+                    }
+                }
+
+                Log.d(TAG, "🎉 JSON发送和显示完成！")
+                addLog("🎉 JSON已发送并显示在设备上！")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ 发送JSON异常: ${e.message}", e)
+                addLog("❌ 发送JSON异常: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * ✅ 新增：发送JSON结果到ESP32（保留以兼容）
      * 使用 Service 1 的文件传输特征来发送JSON
      */
     @SuppressLint("MissingPermission")
@@ -477,7 +623,7 @@ class BleManager(private val context: Context) {
                 Log.d(TAG, "Step 3️⃣: 分块发送JSON数据")
                 addLog("Step 3️⃣: 分块发送JSON数据")
 
-                val chunkSize = 400  // BLE MTU通常是512，减去20字节的包头，留保证书
+                val chunkSize = 400  // BLE MTU通常是512，减去20字节的包头
                 var sentBytes = 0
                 var chunkCount = 0
 

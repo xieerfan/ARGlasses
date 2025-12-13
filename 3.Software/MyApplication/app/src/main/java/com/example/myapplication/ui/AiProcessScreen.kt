@@ -1,8 +1,10 @@
 // 位置: com/example/myapplication/ui/AiProcessScreen.kt
+// ✅ 调试版本 - 追踪按钮状态
 package com.example.myapplication.ui
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -79,8 +81,6 @@ import com.example.myapplication.network.AnswerUploadManager
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
 
-// ============ ✅ 简化UI - 无Tab栏，单页面实时刷新，支持答案删除 ============
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AiProcessScreenV6(
@@ -111,12 +111,15 @@ fun AiProcessScreenV6(
     var selectedSubject by remember { mutableStateOf("physics") }
     var previewFile by remember { mutableStateOf<File?>(null) }
     var jsonPreviewContent by remember { mutableStateOf<String?>(null) }
-    var selectedAnswerId by remember { mutableStateOf<Pair<String, String>?>(null) }  // ✅ 新增：选中的答案ID和文件名
+    var selectedAnswerId by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val receivedCount by receivedImagesCount.collectAsState()
     val enhancedCount by enhancedImagesCount.collectAsState()
     val logsCount by progressLogsCount.collectAsState()
     val jsonCount by jsonResultsCount.collectAsState()
+
+    // ✅ 调试日志：记录按钮状态
+    Log.d("AiProcessScreen", "🔍 按钮状态 | processing=$processing | receivedCount=$receivedCount | enabled=${!processing && receivedCount > 0}")
 
     if (previewFile != null) {
         ImagePreviewDialog(previewFile!!) { previewFile = null }
@@ -126,7 +129,6 @@ fun AiProcessScreenV6(
         JsonPreviewDialog(jsonPreviewContent!!) { jsonPreviewContent = null }
     }
 
-    // ✅ 新增：答案删除确认对话框
     if (selectedAnswerId != null) {
         AlertDialog(
             onDismissRequest = { selectedAnswerId = null },
@@ -212,12 +214,19 @@ fun AiProcessScreenV6(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
+                // ✅ 调试版本：详细日志追踪按钮点击
+                val buttonEnabled = !processing && receivedCount > 0
+
                 Button(
-                    onClick = { onStartProcess(selectedSubject) },
+                    onClick = {
+                        Log.d("AiProcessScreen", "🔴 按钮被点击！selectedSubject=$selectedSubject, processing=$processing, receivedCount=$receivedCount")
+                        onStartProcess(selectedSubject)
+                    },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
-                    enabled = !processing && receivedCount > 0 && !bleConnected,
+                    enabled = buttonEnabled,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (bleConnected) Color(0xFF9E9E9E) else Color(0xFF4CAF50)
+                        containerColor = Color(0xFF4CAF50),
+                        disabledContainerColor = Color(0xFF9E9E9E)
                     )
                 ) {
                     if (processing) {
@@ -230,6 +239,14 @@ fun AiProcessScreenV6(
                         fontWeight = FontWeight.Bold
                     )
                 }
+
+                // ✅ 调试信息：显示按钮状态
+                Text(
+                    "按钮状态: ${if (buttonEnabled) "🟢 可点击" else "🟡 禁用(photos=$receivedCount, processing=$processing)"}",
+                    fontSize = 10.sp,
+                    color = if (buttonEnabled) Color(0xFF4CAF50) else Color(0xFFFF9800),
+                    modifier = Modifier.padding(top = 8.dp)
+                )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -252,7 +269,7 @@ fun AiProcessScreenV6(
                         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF1976D2), modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("BLE已连接，请通过设备端发起处理", fontSize = 12.sp, color = Color(0xFF1976D2))
+                            Text("✅ BLE已连接，可以开始处理", fontSize = 12.sp, color = Color(0xFF1976D2))
                         }
                     }
                 }
@@ -260,7 +277,6 @@ fun AiProcessScreenV6(
 
             Divider(modifier = Modifier.padding(vertical = 16.dp))
 
-            // ✅ 新增：答案结果显示和删除
             if (jsonResults.isNotEmpty()) {
                 Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                     Row(
@@ -286,7 +302,6 @@ fun AiProcessScreenV6(
                                     }
                                 },
                                 onDelete = {
-                                    // 使用文件名作为answer_id的一部分
                                     val answerId = jsonFile.nameWithoutExtension
                                     selectedAnswerId = Pair(answerId, jsonFile.name)
                                 }
@@ -374,9 +389,6 @@ fun AiProcessScreenV6(
     }
 }
 
-/**
- * ✅ 新增：答案卡片组件（带删除按钮）
- */
 @Composable
 fun AnswerCardWithDelete(
     jsonFile: File,
@@ -409,7 +421,6 @@ fun AnswerCardWithDelete(
                 }
             }
 
-            // ✅ 新增：删除按钮
             IconButton(
                 onClick = onDelete,
                 modifier = Modifier.size(36.dp)
@@ -425,7 +436,6 @@ fun AnswerCardWithDelete(
     }
 }
 
-// JSON预览对话框
 @Composable
 fun JsonPreviewDialog(content: String, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
